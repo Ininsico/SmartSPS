@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, Play } from 'lucide-react';
-import PremiumButton from './PremiumButton';
+import PremiumButton from '../PremiumButton';
 import { motion } from 'framer-motion';
 
 const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {

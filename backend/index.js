@@ -22,33 +22,29 @@ const io = new Server(server, {
 app.use(cors());
 app.use(express.json());
 
-// MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('Connected to MongoDB: smartmeet'))
     .catch(err => console.error('MongoDB Connection Error:', err));
 
-// API Routes
 app.use('/api/meetings', meetingRoutes);
 
-// Socket.io logic
 io.on('connection', (socket) => {
     console.log('User connected: ', socket.id);
 
     socket.on('join-room', async ({ roomId, userId, userName, userAvatar, isHost }) => {
+        socket.userId = userId;
+        socket.userName = userName;
+        socket.userAvatar = userAvatar;
         socket.join(roomId);
-
-        // PERSISTENT DB HANDLER (NO ARRAYS)
         try {
             await meetingController.createOrJoinMeeting({ roomId, userId, userName, userAvatar, isHost });
         } catch (err) {
             console.error('Persistence error:', err);
         }
-
-        // DISCOVERY (Uses socket's own in-memory room mechanism only for signaling, never for data storage)
         const socketsInRoom = await io.in(roomId).fetchSockets();
         const otherUsers = socketsInRoom
-            .map(s => s.id)
-            .filter(id => id !== socket.id);
+            .filter(s => s.id !== socket.id && s.userId !== userId)
+            .map(s => s.id);
 
         socket.emit('all-users', otherUsers);
     });
@@ -56,25 +52,27 @@ io.on('connection', (socket) => {
     socket.on('sending-signal', (payload) => {
         io.to(payload.userToSignal).emit('user-joined', {
             signal: payload.signal,
-            callerId: payload.callerId
+            callerId: payload.callerId,
+            userName: payload.userName,
+            userAvatar: payload.userAvatar
         });
     });
 
     socket.on('returning-signal', (payload) => {
         io.to(payload.callerId).emit('receiving-returned-signal', {
             signal: payload.signal,
-            id: socket.id
+            id: socket.id,
+            userName: socket.userName,
+            userAvatar: socket.userAvatar
         });
     });
 
     socket.on('disconnecting', async () => {
-        // Logic for ending meeting / cleanup in DB if necessary
         const roomsList = Array.from(socket.rooms);
         for (const roomId of roomsList) {
             if (roomId !== socket.id) {
                 const socketsInRoom = await io.in(roomId).fetchSockets();
                 if (socketsInRoom.length <= 1) {
-                    // Only one user (the current one about to leave) or empty
                     await meetingController.endMeeting(roomId);
                 }
                 socket.broadcast.to(roomId).emit('user-left', socket.id);
