@@ -368,9 +368,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         socketRef.current = socket;
 
         const join = () => {
+            if (!user?.id) return;
             socket.emit('join-room', {
                 roomId,
-                userId: user?.id,
+                userId: user.id,
                 userName: user?.fullName || user?.username || 'Anonymous',
                 userAvatar: user?.imageUrl,
             });
@@ -395,13 +396,11 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
 
         socket.on('all-users', (users) => {
             users.forEach(({ socketId, userId: uid, userName, userAvatar }) => {
-                // Deduplicate by userId
                 const existingIndex = peersRef.current.findIndex(p => p.userId === uid || p.socketId === socketId);
                 if (existingIndex !== -1) {
                     peersRef.current[existingIndex].peer?.destroy();
                     peersRef.current.splice(existingIndex, 1);
                 }
-
                 const peer = makePeer({ initiator: true, target: socketId, socket });
                 const obj = { socketId, userId: uid, userName, userAvatar, peer };
                 peersRef.current.push(obj);
@@ -415,7 +414,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                 peersRef.current[existingIndex].peer?.destroy();
                 peersRef.current.splice(existingIndex, 1);
             }
-
             const peer = makePeer({ initiator: false, target: socketId, socket });
             const obj = { socketId, userId: uid, userName, userAvatar, peer };
             peersRef.current.push(obj);
@@ -425,7 +423,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         socket.on('signal', ({ from, signal }) => {
             let item = peersRef.current.find(p => p.socketId === from);
             if (!item) {
-                // FALLBACK: If we get a signal for someone we don't know, create them now.
                 const peer = makePeer({ initiator: false, target: from, socket });
                 item = { socketId: from, userName: 'Connecting...', peer };
                 peersRef.current.push(item);
@@ -433,7 +430,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             }
             item.peer.signal(signal);
         });
-
         socket.on('ice-candidate', ({ from, candidate }) => {
             const item = peersRef.current.find(p => p.socketId === from);
             if (item?.peer) { try { item.peer.signal({ candidate }); } catch (_) { } }
@@ -476,6 +472,17 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             showToast(`🎙️ ${byName} is asking you to unmute`);
         });
     };
+
+    useEffect(() => {
+        if (user?.id && socketRef.current?.connected) {
+            socketRef.current.emit('join-room', {
+                roomId,
+                userId: user.id,
+                userName: user.fullName || user.username || 'Anonymous',
+                userAvatar: user.imageUrl,
+            });
+        }
+    }, [user, roomId]);
 
     const makePeer = useCallback(({ initiator, target, socket }) => {
         const peer = new Peer({

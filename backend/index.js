@@ -70,7 +70,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
 // Required handlers for Socket.io on Vercel signaling
 io.on('connection', (socket) => {
-    socket.on('join-room', async ({ roomId, userId, userName, userAvatar }) => {
+    socket.on('join-room', async ({ roomId: rawRoomId, userId, userName, userAvatar }) => {
+        const roomId = rawRoomId.toLowerCase();
         socket.userId = userId;
         socket.userName = userName;
         socket.userAvatar = userAvatar;
@@ -79,26 +80,32 @@ io.on('connection', (socket) => {
 
         const inviteUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}?room=${roomId}` : '';
 
-        await ctrl.createOrJoinMeeting({
+        const result = await ctrl.createOrJoinMeeting({
             roomId, userId, userName, userAvatar,
             socketId: socket.id, inviteUrl,
-        }).catch(err => { console.error('DB join error:', err.message); });
+        }).catch(err => {
+            console.error('Join Error:', err.message);
+            return null;
+        });
 
-        const meeting = await ctrl.Meeting.findOne({ roomId }).lean();
-        const hostSocketId = meeting?.hostSocketId;
-        const amHost = meeting?.hostId === userId;
+        if (!result) return;
+        const { meeting } = result;
 
-        if (amHost && !hostSocketId) {
+        const amHost = meeting.hostId === userId;
+        const hId = meeting.hostSocketId || (amHost ? socket.id : null);
+
+        if (amHost && !meeting.hostSocketId) {
             await ctrl.reassignHost({ roomId, newHostSocketId: socket.id, newHostUserId: userId });
         }
 
-        socket.emit('host-status', socket.id === (amHost && !hostSocketId ? socket.id : hostSocketId));
+        socket.emit('host-status', amHost);
         socket.emit('invite-url', inviteUrl);
 
-        const others = (meeting?.participants || [])
+        const others = (meeting.participants || [])
             .filter(p => p.isActive && p.socketId !== socket.id)
             .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
 
+        console.log(`User ${userId} joined room ${roomId}. Others found: ${others.length}`);
         socket.emit('all-users', others);
         socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
     });

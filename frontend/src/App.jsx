@@ -23,7 +23,7 @@ function App() {
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
     if (roomFromUrl) {
-      setRoomId(roomFromUrl);
+      setRoomId(roomFromUrl.toLowerCase());
     }
   }, []);
 
