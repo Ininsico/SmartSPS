@@ -19,17 +19,14 @@ function App() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { signOut } = useClerk();
 
-  // ── ONE TIME: Read room from URL on initial load ────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
     if (roomFromUrl) {
       setRoomId(roomFromUrl);
-      // Will be routed correctly once isLoaded resolves
     }
-  }, []); // runs ONCE on mount only
+  }, []);
 
-  // ── ONGOING: React to auth state changes ───────────────────────────────────
   useEffect(() => {
     if (!isLoaded) return;
 
@@ -37,7 +34,6 @@ function App() {
     const roomFromUrl = params.get('room');
 
     if (roomFromUrl && view !== 'meeting' && view !== 'preview') {
-      // Only redirect to preview if we're NOT already in or past the meeting
       if (isSignedIn) {
         setView('preview');
       } else {
@@ -48,9 +44,8 @@ function App() {
     } else if (!isSignedIn && (view === 'dashboard' || view === 'meeting' || view === 'preview')) {
       setView('landing');
     }
-  }, [isSignedIn, isLoaded]); // ← NO 'view' dependency — prevents re-triggering on every step
+  }, [isSignedIn, isLoaded]);
 
-  // ── GLOBAL CAMERA KILLSWITCH ────────────────────────────────────────────────
   useEffect(() => {
     if (view !== 'meeting' && view !== 'preview') {
       mediaManager.killAll();

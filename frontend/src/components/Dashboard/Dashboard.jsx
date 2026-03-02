@@ -21,7 +21,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
         const fetchHistory = async () => {
             try {
                 const token = await getToken();
-                const response = await fetch('http://localhost:5000/api/meetings/history', {
+                const response = await fetch(`${import.meta.env.VITE_API_URL}/meetings/history`, {
                     headers: { Authorization: `Bearer ${token}` }
                 });
                 const data = await response.json();
