@@ -1,274 +1,313 @@
-import React, { useState } from 'react';
-import { Video, Plus, Keyboard, Sparkles } from 'lucide-react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect } from 'react';
+import { Video, Plus, Keyboard, ExternalLink, ShieldCheck } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
+import PremiumButton from './PremiumButton';
+import { UserButton } from '@clerk/clerk-react';
 
-const LandingPage = ({ onJoin }) => {
+const LandingPage = ({ onJoin, onStartMeeting }) => {
   const [roomName, setRoomName] = useState('');
+  const [wordIndex, setWordIndex] = useState(0);
+  const words = ['everyone', 'teams', 'creatives', 'founders', 'family', 'future'];
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setWordIndex((prev) => (prev + 1) % words.length);
+    }, 2500);
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="landing-container">
-      <nav className="glass-morphism landing-nav">
+      <nav className="landing-nav glass-morphism">
         <div className="logo-section">
-          <Video className="logo-icon" />
-          <span className="logo-text">Nexus<span className="gradient-text">Meet</span></span>
+          <Video className="logo-icon" size={28} />
+          <span className="logo-text">smart<span className="bold-text">Meet</span></span>
         </div>
-        <div className="nav-time">
-          {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString()}
+        <div className="nav-right">
+          <div className="nav-actions">
+            <UserButton afterSignOutUrl="/" />
+            <span className="nav-time">
+              {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString()}
+            </span>
+          </div>
         </div>
       </nav>
 
       <main className="landing-main">
-        <div className="content-side">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
+        <motion.div
+          className="hero-section"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, ease: "easeOut" }}
+        >
+          <div className="hero-content">
             <h1 className="hero-title">
-              Premium video meetings. <br />
-              Now <span className="gradient-text">crystal clear</span> for everyone.
+              Secure video conferencing <br /> for <span className="word-rotator-container">
+                <AnimatePresence mode="wait">
+                  <motion.span
+                    key={words[wordIndex]}
+                    initial={{ y: 20, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    exit={{ y: -20, opacity: 0 }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                    className="underline-text"
+                  >
+                    {words[wordIndex]}
+                  </motion.span>
+                </AnimatePresence>
+              </span>
             </h1>
             <p className="hero-subtitle">
-              Secure, high-quality video conferencing designed for modern teams.
-              Connect, collaborate, and celebrate from anywhere.
+              Experience crystal-clear communication with smartMeet <br />
+              Enterprise-grade security simplified for your everyday connections
             </p>
 
-            <div className="action-row">
-              <button
-                className="premium-button btn-primary"
-                onClick={() => onJoin(Math.random().toString(36).substring(7))}
-              >
-                <Plus size={20} />
-                New Meeting
-              </button>
-
-              <div className="input-group">
-                <div className="input-wrapper glass-morphism">
-                  <Keyboard size={20} className="input-icon" />
-                  <input
-                    type="text"
-                    placeholder="Enter a code or link"
-                    value={roomName}
-                    onChange={(e) => setRoomName(e.target.value)}
-                  />
-                </div>
-                <button
-                  className="join-btn"
-                  disabled={!roomName}
-                  onClick={() => onJoin(roomName)}
+            <div className="action-hub">
+              <div className="primary-actions">
+                <PremiumButton
+                  className="hero-btn"
+                  icon={Plus}
+                  onClick={onStartMeeting}
                 >
-                  Join
-                </button>
+                  Start a Meeting
+                </PremiumButton>
+
+                <div className="input-group-centered">
+                  <div className="input-wrapper-light">
+                    <Keyboard size={20} className="input-icon-left" strokeWidth={1.5} />
+                    <input
+                      type="text"
+                      placeholder="Enter a code or link"
+                      value={roomName}
+                      onChange={(e) => setRoomName(e.target.value)}
+                    />
+                  </div>
+                  <PremiumButton
+                    className="join-button-minimal"
+                    disabled={!roomName}
+                    onClick={() => onJoin(roomName)}
+                  >
+                    Join Room
+                  </PremiumButton>
+                </div>
+              </div>
+
+              <div className="divider-minimal" />
+
+              <div className="secondary-info">
+                <p>New to smartMeet? <a href="#" className="link-action">Create an account <ExternalLink size={14} /></a></p>
               </div>
             </div>
-
-            <div className="divider" />
-
-            <div className="promo-section">
-              <Sparkles size={18} className="promo-icon" />
-              <span>Learn more about <a href="#">NexusMeet Premium</a></span>
-            </div>
-          </motion.div>
-        </div>
-
-        <div className="visual-side">
-          <motion.div
-            className="feature-card glass-morphism"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ delay: 0.2, duration: 0.8 }}
-          >
-            <div className="card-image-placeholder" />
-            <div className="card-info">
-              <h3>Get a link you can share</h3>
-              <p>Click <strong>New meeting</strong> to get a link you can send to people you want to meet with</p>
-            </div>
-          </motion.div>
-        </div>
+          </div>
+        </motion.div>
       </main>
 
       <style dangerouslySetInnerHTML={{
         __html: `
         .landing-container {
-          height: 100vh;
+          min-height: 100vh;
           display: flex;
           flex-direction: column;
+          background-color: #ffffff;
+          background-image: radial-gradient(#00000005 1px, transparent 1px);
+          background-size: 32px 32px;
         }
 
         .landing-nav {
           display: flex;
           justify-content: space-between;
           align-items: center;
-          padding: 1rem 2rem;
-          margin: 1rem;
-          border-radius: 1rem;
+          padding: 1.5rem 3rem;
+          margin: 0;
+          border-bottom: 1px solid rgba(0,0,0,0.05);
+          background: rgba(255,255,255,0.8);
+          backdrop-filter: blur(10px);
         }
 
         .logo-section {
           display: flex;
           align-items: center;
           gap: 0.75rem;
-          font-size: 1.5rem;
-          font-weight: 700;
+          font-size: 1.75rem;
+          font-weight: 500;
+          letter-spacing: -0.5px;
+          color: #000;
         }
 
         .logo-icon {
-          color: var(--accent-primary);
+          color: #000;
+        }
+
+        .bold-text {
+          font-weight: 800;
+        }
+
+        .nav-actions {
+          display: flex;
+          align-items: center;
+          gap: 1.5rem;
+          color: #555;
+          font-weight: 500;
+          font-size: 0.95rem;
+        }
+
+        .icon-muted {
+          color: #ccc;
         }
 
         .landing-main {
           flex: 1;
-          display: grid;
-          grid-template-columns: 1.2fr 0.8fr;
-          padding: 4rem;
+          display: flex;
           align-items: center;
-          gap: 4rem;
+          justify-content: center;
+          padding: 2rem;
+        }
+
+        .hero-section {
+          max-width: 900px;
+          width: 100%;
+          text-align: center;
         }
 
         .hero-title {
-          font-size: 3.5rem;
-          line-height: 1.2;
-          margin-bottom: 2rem;
+          font-size: 4.5rem;
+          line-height: 1.1;
+          letter-spacing: -2px;
           font-weight: 800;
+          margin-bottom: 2.5rem;
+          color: #000;
+        }
+
+        .underline-text {
+          text-decoration: underline;
+          text-underline-offset: 8px;
+          text-decoration-thickness: 4px;
+        }
+
+        .word-rotator-container {
+          display: inline-flex;
+          position: relative;
+          min-width: 280px;
+          justify-content: flex-start;
+          vertical-align: top;
         }
 
         .hero-subtitle {
-          font-size: 1.25rem;
-          color: var(--text-secondary);
-          margin-bottom: 3rem;
-          max-width: 600px;
-          line-height: 1.6;
+          font-size: 1.5rem;
+          color: #666;
+          margin-bottom: 4rem;
+          line-height: 1.5;
+          max-width: 750px;
+          margin-left: auto;
+          margin-right: auto;
         }
 
-        .action-row {
+        .action-hub {
           display: flex;
-          gap: 1.5rem;
+          flex-direction: column;
           align-items: center;
-          margin-bottom: 2rem;
+          gap: 2rem;
         }
 
-        .input-group {
+        .primary-actions {
           display: flex;
+          gap: 2rem;
+          align-items: center;
+          flex-wrap: wrap;
+          justify-content: center;
+        }
+
+        .hero-btn {
+          height: 60px;
+          padding: 0 2.5rem;
+          font-size: 1rem;
+          border-radius: 99px;
+          box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .input-group-centered {
+          display: flex;
+          align-items: center;
+          background: #fdfdfd;
+          padding: 0.5rem;
+          border-radius: 99px;
+          border: 1px solid #e5e5e5;
+          transition: all 0.3s ease;
+        }
+
+        .input-group-centered:focus-within {
+          border-color: #000;
+          box-shadow: 0 0 0 1px #000;
+        }
+
+        .input-wrapper-light {
+          display: flex;
+          align-items: center;
+          padding: 0 1.25rem;
           gap: 1rem;
-          align-items: center;
         }
 
-        .input-wrapper {
-          display: flex;
-          align-items: center;
-          padding: 0.25rem 1rem;
-          border-radius: 0.75rem;
-          gap: 0.75rem;
-        }
-
-        .input-icon {
-          color: var(--text-secondary);
-        }
-
-        .input-wrapper input {
-          background: transparent;
+        .input-wrapper-light input {
           border: none;
-          color: white;
+          background: transparent;
+          font-size: 1rem;
           padding: 0.75rem 0;
-          font-size: 1rem;
           outline: none;
-          width: 200px;
-        }
-
-        .join-btn {
-          background: transparent;
-          border: none;
-          color: var(--accent-primary);
+          color: #000;
+          width: 220px;
           font-weight: 600;
-          font-size: 1rem;
-          cursor: pointer;
+          font-family: 'Montserrat', sans-serif;
         }
 
-        .join-btn:disabled {
-          color: var(--text-secondary);
+        .join-button-minimal {
+          height: 50px;
+          padding: 0 1.75rem !important;
+          font-size: 0.75rem !important;
+          letter-spacing: 1px !important;
+        }
+
+        .join-button-link:disabled {
+          color: #ccc;
           cursor: not-allowed;
         }
 
-        .divider {
+        .divider-minimal {
+          width: 100px;
           height: 1px;
-          background: var(--border-glass);
-          margin: 2rem 0;
-          width: 80%;
+          background: #eee;
         }
 
-        .promo-section {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          font-size: 0.9rem;
-          color: var(--text-secondary);
+        .secondary-info {
+          font-size: 1rem;
+          color: #888;
         }
 
-        .promo-section a {
-          color: var(--accent-secondary);
+        .link-action {
+          color: #000;
           text-decoration: none;
+          font-weight: 700;
+          border-bottom: 2px solid #000;
+          padding-bottom: 1px;
+          display: inline-flex;
+          align-items: center;
+          gap: 0.25rem;
         }
 
-        .feature-card {
-          width: 100%;
-          max-width: 450px;
-          border-radius: 2rem;
-          overflow: hidden;
-          padding: 1.5rem;
-        }
-
-        .card-image-placeholder {
-          aspect-ratio: 1;
-          background: linear-gradient(135deg, #111111 0%, #000000 100%);
-          border-radius: 1.5rem;
-          margin-bottom: 2rem;
-          position: relative;
-          overflow: hidden;
-          border: 1px solid var(--border-glass);
-        }
-
-        .card-image-placeholder::after {
-          content: '';
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(circle at center, #ffffff 0%, transparent 70%);
-          opacity: 0.05;
-        }
-
-        .card-info {
-          text-align: center;
-          padding: 0 1rem 1rem;
-        }
-
-        .card-info h3 {
-          font-size: 1.5rem;
-          margin-bottom: 0.75rem;
-        }
-
-        .card-info p {
-          color: var(--text-secondary);
-          line-height: 1.5;
-        }
-
-        @media (max-width: 1024px) {
-          .landing-main {
-            grid-template-columns: 1fr;
-            text-align: center;
+        @media (max-width: 768px) {
+          .hero-title {
+            font-size: 3rem;
+            letter-spacing: -1px;
           }
           .hero-subtitle {
-            margin: 0 auto 3rem;
+            font-size: 1.2rem;
           }
-          .action-row {
-            justify-content: center;
+          .primary-actions {
+            flex-direction: column;
+            width: 100%;
           }
-          .visual-side {
-            display: none;
-          }
-          .divider {
-            margin: 2rem auto;
-          }
-          .promo-section {
-            justify-content: center;
+          .hero-btn, .input-group-centered {
+            width: 100%;
+            max-width: 400px;
           }
         }
       `}} />
