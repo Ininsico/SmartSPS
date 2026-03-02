@@ -171,7 +171,8 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => console.log(`SmartSPS Backend on :${PORT}`));
+if (process.env.NODE_ENV !== 'production') {
+    httpServer.listen(PORT, () => console.log(`SmartSPS Backend on :${PORT}`));
+}
 
-// Export for Vercel
-export default httpServer;
+export default app;
