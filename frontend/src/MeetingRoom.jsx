@@ -246,7 +246,7 @@ const ReactionPicker = ({ onPick, onClose, isDark, barBord }) => (
 const InviteModal = ({ roomId, inviteUrl, onClose, isDark, textCol, barBord, mutedCol }) => {
     const [done, setDone] = useState(false);
     const copy = () => {
-        const link = (inviteUrl && !inviteUrl.includes('localhost')) ? inviteUrl : `${window.location.origin}?room=${roomId}`;
+        const link = `${window.location.origin}?room=${roomId}`;
         navigator.clipboard.writeText(link).then(() => {
             setDone(true); setTimeout(() => setDone(false), 2500);
         });
@@ -271,7 +271,7 @@ const InviteModal = ({ roomId, inviteUrl, onClose, isDark, textCol, barBord, mut
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f7', border: `1px solid ${barBord}`, borderRadius: '0.75rem', padding: '0.65rem 1rem', marginBottom: '1.25rem' }}>
                     <Link2 size={14} color={mutedCol} style={{ flexShrink: 0 }} />
                     <span style={{ fontSize: '0.78rem', color: mutedCol, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
-                        {(inviteUrl && !inviteUrl.includes('localhost')) ? inviteUrl : `${window.location.origin}?room=${roomId}`}
+                        {`${window.location.origin}?room=${roomId}`}
                     </span>
                 </div>
                 <button onClick={copy} style={{ width: '100%', padding: '0.85rem', border: 'none', borderRadius: '0.85rem', background: done ? '#276749' : '#e53e3e', color: '#fff', fontWeight: 800, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.2s' }}>
@@ -570,7 +570,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
 
     const openPanel = (p) => { setPanel(prev => prev === p ? null : p); if (p === 'chat') setUnread(0); };
     const copyRoom = () => {
-        const link = (inviteUrl && !inviteUrl.includes('localhost')) ? inviteUrl : `${window.location.origin}?room=${roomId}`;
+        const link = `${window.location.origin}?room=${roomId}`;
         navigator.clipboard.writeText(link).then(() => {
             setCopied(true); setTimeout(() => setCopied(false), 2000);
             showToast('Link copied to clipboard! 📋');

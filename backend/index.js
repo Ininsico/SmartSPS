@@ -16,15 +16,9 @@ const httpServer = createServer(app);
 
 const COLLECTION_NAME = 'socket_io_adapter';
 
-const allowedOrigins = [
-    process.env.FRONTEND_URL,
-    'http://localhost:5173',
-    'https://smartsps.vercel.app'
-].filter(Boolean);
-
 const io = new Server(httpServer, {
     cors: {
-        origin: allowedOrigins.length > 0 ? allowedOrigins : '*',
+        origin: (origin, callback) => callback(null, true),
         methods: ['GET', 'POST'],
         credentials: true
     },
@@ -35,7 +29,13 @@ const io = new Server(httpServer, {
     connectTimeout: 45000
 });
 
-app.use(cors({ origin: allowedOrigins.length > 0 ? allowedOrigins : '*', credentials: true }));
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow all origins
+        callback(null, true);
+    },
+    credentials: true
+}));
 app.use(express.json());
 
 let cachedMongoose = null;
