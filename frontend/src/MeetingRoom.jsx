@@ -394,27 +394,44 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         });
 
         socket.on('all-users', (users) => {
-            users.forEach(({ socketId, userName, userAvatar }) => {
-                if (peersRef.current.find(p => p.socketId === socketId)) return;
+            users.forEach(({ socketId, userId: uid, userName, userAvatar }) => {
+                // Deduplicate by userId
+                const existingIndex = peersRef.current.findIndex(p => p.userId === uid || p.socketId === socketId);
+                if (existingIndex !== -1) {
+                    peersRef.current[existingIndex].peer?.destroy();
+                    peersRef.current.splice(existingIndex, 1);
+                }
+
                 const peer = makePeer({ initiator: true, target: socketId, socket });
-                const obj = { socketId, userName, userAvatar, peer };
+                const obj = { socketId, userId: uid, userName, userAvatar, peer };
                 peersRef.current.push(obj);
-                setPeers(prev => [...prev, obj]);
+                setPeers(prev => [...prev.filter(p => p.userId !== uid && p.socketId !== socketId), obj]);
             });
         });
 
-        socket.on('peer-joined', ({ socketId, userName, userAvatar }) => {
-            if (peersRef.current.find(p => p.socketId === socketId)) return;
-            // Existing users wait for the new user to initiate
+        socket.on('peer-joined', ({ socketId, userId: uid, userName, userAvatar }) => {
+            const existingIndex = peersRef.current.findIndex(p => p.userId === uid || p.socketId === socketId);
+            if (existingIndex !== -1) {
+                peersRef.current[existingIndex].peer?.destroy();
+                peersRef.current.splice(existingIndex, 1);
+            }
+
             const peer = makePeer({ initiator: false, target: socketId, socket });
-            const obj = { socketId, userName, userAvatar, peer };
+            const obj = { socketId, userId: uid, userName, userAvatar, peer };
             peersRef.current.push(obj);
-            setPeers(prev => [...prev, obj]);
+            setPeers(prev => [...prev.filter(p => p.userId !== uid && p.socketId !== socketId), obj]);
         });
 
         socket.on('signal', ({ from, signal }) => {
-            const item = peersRef.current.find(p => p.socketId === from);
-            if (item) item.peer.signal(signal);
+            let item = peersRef.current.find(p => p.socketId === from);
+            if (!item) {
+                // FALLBACK: If we get a signal for someone we don't know, create them now.
+                const peer = makePeer({ initiator: false, target: from, socket });
+                item = { socketId: from, userName: 'Connecting...', peer };
+                peersRef.current.push(item);
+                setPeers(prev => [...prev, item]);
+            }
+            item.peer.signal(signal);
         });
 
         socket.on('ice-candidate', ({ from, candidate }) => {

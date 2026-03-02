@@ -66,3 +66,4 @@ export const getHostSocketId = async (roomId) => {
     const m = await Meeting.findOne({ roomId }, 'hostSocketId').lean();
     return m?.hostSocketId ?? null;
 };
+export { Meeting };

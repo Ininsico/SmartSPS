@@ -22,11 +22,11 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST'],
         credentials: true
     },
-    pingTimeout: 30000,
-    pingInterval: 10000,
+    pingTimeout: 20000,
+    pingInterval: 5000,
     transports: ['websocket', 'polling'], // Allow polling for Vercel fallback
     perMessageDeflate: false,
-    connectTimeout: 45000
+    connectTimeout: 30000
 });
 
 app.use(cors({
@@ -77,24 +77,24 @@ io.on('connection', (socket) => {
         socket.roomId = roomId;
         await socket.join(roomId);
 
-        const appUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
-        const inviteUrl = `${appUrl}?room=${roomId}`;
+        const inviteUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}?room=${roomId}` : '';
 
-        const { meeting, isHost } = await ctrl.createOrJoinMeeting({
+        await ctrl.createOrJoinMeeting({
             roomId, userId, userName, userAvatar,
             socketId: socket.id, inviteUrl,
-        }).catch(err => { console.error('DB join error:', err.message); return { isHost: false, meeting: null }; });
+        }).catch(err => { console.error('DB join error:', err.message); });
 
-        const hostSocketId = await ctrl.getHostSocketId(roomId);
-        if (isHost && !hostSocketId) {
+        const meeting = await ctrl.Meeting.findOne({ roomId }).lean();
+        const hostSocketId = meeting?.hostSocketId;
+        const amHost = meeting?.hostId === userId;
+
+        if (amHost && !hostSocketId) {
             await ctrl.reassignHost({ roomId, newHostSocketId: socket.id, newHostUserId: userId });
         }
 
-        const effectiveHost = isHost && !hostSocketId ? socket.id : hostSocketId;
-        socket.emit('host-status', socket.id === effectiveHost);
+        socket.emit('host-status', socket.id === (amHost && !hostSocketId ? socket.id : hostSocketId));
         socket.emit('invite-url', inviteUrl);
 
-        // GET OTHERS FROM DATABASE (Not from local memory/sockets)
         const others = (meeting?.participants || [])
             .filter(p => p.isActive && p.socketId !== socket.id)
             .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
