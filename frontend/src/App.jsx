@@ -8,6 +8,7 @@ import { motion } from 'framer-motion';
 import ErrorBoundary from './ErrorBoundary';
 import NotFoundPage from './NotFoundPage';
 import Dashboard from './components/Dashboard/Dashboard';
+import { mediaManager } from './mediaManager';
 
 function App() {
   const [view, setView] = useState('landing');
@@ -18,12 +19,25 @@ function App() {
   const { isLoaded, isSignedIn, user } = useUser();
   const { signOut } = useClerk();
 
+  // ── ONE TIME: Read room from URL on initial load ────────────────────────────
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
-
     if (roomFromUrl) {
       setRoomId(roomFromUrl);
+      // Will be routed correctly once isLoaded resolves
+    }
+  }, []); // runs ONCE on mount only
+
+  // ── ONGOING: React to auth state changes ───────────────────────────────────
+  useEffect(() => {
+    if (!isLoaded) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const roomFromUrl = params.get('room');
+
+    if (roomFromUrl && view !== 'meeting' && view !== 'preview') {
+      // Only redirect to preview if we're NOT already in or past the meeting
       if (isSignedIn) {
         setView('preview');
       } else {
@@ -31,25 +45,19 @@ function App() {
       }
     } else if (isSignedIn && (view === 'landing' || view === 'login')) {
       setView('dashboard');
-    } else if (isLoaded && !isSignedIn && (view === 'dashboard' || view === 'meeting' || view === 'preview')) {
+    } else if (!isSignedIn && (view === 'dashboard' || view === 'meeting' || view === 'preview')) {
       setView('landing');
     }
+  }, [isSignedIn, isLoaded]); // ← NO 'view' dependency — prevents re-triggering on every step
 
-    if (window.location.pathname !== '/' && !window.location.pathname.startsWith('/')) {
-      setView('404');
+  // ── GLOBAL CAMERA KILLSWITCH ────────────────────────────────────────────────
+  useEffect(() => {
+    if (view !== 'meeting' && view !== 'preview') {
+      mediaManager.killAll();
     }
-  }, [isSignedIn, view, isLoaded]);
+  }, [view]);
 
   const navigateToLogin = () => setView('login');
-
-  const handleJoinAttempt = (id) => {
-    setRoomId(id);
-    if (!isSignedIn) {
-      setView('login');
-    } else {
-      setView('preview');
-    }
-  };
 
   const handleStartMeeting = () => {
     if (!isSignedIn) {
@@ -57,6 +65,17 @@ function App() {
     } else {
       const id = Math.random().toString(36).substring(7);
       setRoomId(id);
+      window.history.replaceState({}, '', `?room=${id}`);
+      setView('preview');
+    }
+  };
+
+  const handleJoinAttempt = (id) => {
+    setRoomId(id);
+    if (!isSignedIn) {
+      setView('login');
+    } else {
+      window.history.replaceState({}, '', `?room=${id}`);
       setView('preview');
     }
   };
@@ -96,6 +115,7 @@ function App() {
                   onLeave={handleLeave}
                   initialConfig={mediaConfig}
                   isDarkMode={isDarkMode}
+                  setIsDarkMode={setIsDarkMode}
                 />
               ) : view === 'preview' ? (
                 <PreJoinScreen
@@ -103,6 +123,7 @@ function App() {
                   onJoin={enterMeeting}
                   onBack={() => setView('dashboard')}
                   isDarkMode={isDarkMode}
+                  setIsDarkMode={setIsDarkMode}
                 />
               ) : (
                 <Dashboard

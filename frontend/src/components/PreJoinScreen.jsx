@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Mic, MicOff, Video as VideoIcon, VideoOff, Play } from 'lucide-react';
 import PremiumButton from '../PremiumButton';
 import { motion } from 'framer-motion';
+import { mediaManager } from '../mediaManager';
 
 const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
     const [micOn, setMicOn] = useState(true);
@@ -12,13 +13,23 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
     const darkMaroon = '#1a0a0a';
 
     useEffect(() => {
+        let isMounted = true;
+
         const startPreview = async () => {
             try {
                 const mediaStream = await navigator.mediaDevices.getUserMedia({
                     video: true,
                     audio: true
                 });
+
+                if (!isMounted) {
+                    // If component unmounted while waiting for permission, stop immediately
+                    mediaStream.getTracks().forEach(track => track.stop());
+                    return;
+                }
+
                 streamRef.current = mediaStream;
+                mediaManager.registerStream(mediaStream); // register globally
                 if (videoRef.current) {
                     videoRef.current.srcObject = mediaStream;
                 }
@@ -29,12 +40,9 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
         startPreview();
 
         return () => {
-            if (streamRef.current) {
-                streamRef.current.getTracks().forEach(track => {
-                    track.stop();
-                    track.enabled = false;
-                });
-            }
+            isMounted = false;
+            mediaManager.unregister(streamRef.current);
+            streamRef.current = null;
         };
     }, []);
 
@@ -119,12 +127,9 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
     };
 
     const handleJoin = () => {
-        if (streamRef.current) {
-            streamRef.current.getTracks().forEach(track => {
-                track.stop();
-                track.enabled = false;
-            });
-        }
+        // Kill the preview stream — MeetingRoom will open its own fresh stream
+        mediaManager.unregister(streamRef.current);
+        streamRef.current = null;
         onJoin({ micOn, videoOn });
     };
 
