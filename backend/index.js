@@ -80,10 +80,10 @@ io.on('connection', (socket) => {
         const appUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
         const inviteUrl = `${appUrl}?room=${roomId}`;
 
-        const { isHost } = await ctrl.createOrJoinMeeting({
+        const { meeting, isHost } = await ctrl.createOrJoinMeeting({
             roomId, userId, userName, userAvatar,
             socketId: socket.id, inviteUrl,
-        }).catch(err => { console.error('DB join error:', err.message); return { isHost: false }; });
+        }).catch(err => { console.error('DB join error:', err.message); return { isHost: false, meeting: null }; });
 
         const hostSocketId = await ctrl.getHostSocketId(roomId);
         if (isHost && !hostSocketId) {
@@ -94,23 +94,17 @@ io.on('connection', (socket) => {
         socket.emit('host-status', socket.id === effectiveHost);
         socket.emit('invite-url', inviteUrl);
 
-        const socketsInRoom = await io.in(roomId).fetchSockets();
-        const others = socketsInRoom
-            .filter(s => s.id !== socket.id && s.userId !== userId)
-            .map(s => ({ socketId: s.id, userId: s.userId, userName: s.userName, userAvatar: s.userAvatar }));
+        // GET OTHERS FROM DATABASE (Not from local memory/sockets)
+        const others = (meeting?.participants || [])
+            .filter(p => p.isActive && p.socketId !== socket.id)
+            .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
 
         socket.emit('all-users', others);
-        socket.broadcast.to(roomId).emit('peer-joined-room', { socketId: socket.id, userId, userName, userAvatar });
+        socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
     });
 
-    socket.on('sending-signal', ({ userToSignal, callerId, signal, userName, userAvatar }) => {
-        io.to(userToSignal).emit('user-joined', { signal, callerId, userName, userAvatar });
-    });
-
-    socket.on('returning-signal', ({ callerId, signal }) => {
-        io.to(callerId).emit('receiving-returned-signal', {
-            signal, id: socket.id, userName: socket.userName, userAvatar: socket.userAvatar,
-        });
+    socket.on('signal', ({ to, signal }) => {
+        io.to(to).emit('signal', { from: socket.id, signal });
     });
 
     socket.on('ice-candidate', ({ to, candidate }) => {

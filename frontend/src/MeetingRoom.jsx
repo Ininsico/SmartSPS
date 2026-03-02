@@ -245,7 +245,12 @@ const ReactionPicker = ({ onPick, onClose, isDark, barBord }) => (
 
 const InviteModal = ({ roomId, inviteUrl, onClose, isDark, textCol, barBord, mutedCol }) => {
     const [done, setDone] = useState(false);
-    const copy = () => { navigator.clipboard.writeText(inviteUrl); setDone(true); setTimeout(() => setDone(false), 2500); };
+    const copy = () => {
+        const link = (inviteUrl && !inviteUrl.includes('localhost')) ? inviteUrl : `${window.location.origin}?room=${roomId}`;
+        navigator.clipboard.writeText(link).then(() => {
+            setDone(true); setTimeout(() => setDone(false), 2500);
+        });
+    };
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
             <motion.div initial={{ opacity: 0, scale: 0.9, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}
@@ -265,7 +270,9 @@ const InviteModal = ({ roomId, inviteUrl, onClose, isDark, textCol, barBord, mut
                 <label style={{ fontSize: '0.68rem', fontWeight: 700, letterSpacing: '1px', color: mutedCol, textTransform: 'uppercase', display: 'block', marginBottom: '0.45rem' }}>Invite Link</label>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, background: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f7', border: `1px solid ${barBord}`, borderRadius: '0.75rem', padding: '0.65rem 1rem', marginBottom: '1.25rem' }}>
                     <Link2 size={14} color={mutedCol} style={{ flexShrink: 0 }} />
-                    <span style={{ fontSize: '0.78rem', color: mutedCol, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>{inviteUrl}</span>
+                    <span style={{ fontSize: '0.78rem', color: mutedCol, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'monospace' }}>
+                        {(inviteUrl && !inviteUrl.includes('localhost')) ? inviteUrl : `${window.location.origin}?room=${roomId}`}
+                    </span>
                 </div>
                 <button onClick={copy} style={{ width: '100%', padding: '0.85rem', border: 'none', borderRadius: '0.85rem', background: done ? '#276749' : '#e53e3e', color: '#fff', fontWeight: 800, fontSize: '0.92rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'background 0.2s' }}>
                     {done ? <><Check size={17} /> Copied!</> : <><Copy size={17} /> Copy Invite Link</>}
@@ -387,35 +394,27 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         });
 
         socket.on('all-users', (users) => {
-            const built = [];
             users.forEach(({ socketId, userName, userAvatar }) => {
                 if (peersRef.current.find(p => p.socketId === socketId)) return;
-                const peer = makePeer({ initiator: true, stream, target: socketId, socket });
+                const peer = makePeer({ initiator: true, target: socketId, socket });
                 const obj = { socketId, userName, userAvatar, peer };
                 peersRef.current.push(obj);
-                built.push(obj);
-            });
-            if (built.length) setPeers(prev => {
-                const ex = prev.map(p => p.socketId);
-                return [...prev, ...built.filter(b => !ex.includes(b.socketId))];
+                setPeers(prev => [...prev, obj]);
             });
         });
 
-        socket.on('user-joined', ({ signal, callerId, userName, userAvatar }) => {
-            if (peersRef.current.find(p => p.socketId === callerId)) return;
-            const peer = makePeer({ initiator: false, stream, target: callerId, socket, signal });
-            const obj = { socketId: callerId, userName, userAvatar, peer };
+        socket.on('peer-joined', ({ socketId, userName, userAvatar }) => {
+            if (peersRef.current.find(p => p.socketId === socketId)) return;
+            // Existing users wait for the new user to initiate
+            const peer = makePeer({ initiator: false, target: socketId, socket });
+            const obj = { socketId, userName, userAvatar, peer };
             peersRef.current.push(obj);
-            setPeers(prev => prev.find(p => p.socketId === callerId) ? prev : [...prev, obj]);
+            setPeers(prev => [...prev, obj]);
         });
 
-        socket.on('receiving-returned-signal', ({ id, signal, userName, userAvatar }) => {
-            const item = peersRef.current.find(p => p.socketId === id);
-            if (item) {
-                item.peer.signal(signal);
-                item.userName = userName; item.userAvatar = userAvatar;
-                setPeers(prev => prev.map(p => p.socketId === id ? { ...p, userName, userAvatar } : p));
-            }
+        socket.on('signal', ({ from, signal }) => {
+            const item = peersRef.current.find(p => p.socketId === from);
+            if (item) item.peer.signal(signal);
         });
 
         socket.on('ice-candidate', ({ from, candidate }) => {
@@ -461,9 +460,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         });
     };
 
-    const makePeer = useCallback(({ initiator, stream, target, socket, signal }) => {
+    const makePeer = useCallback(({ initiator, target, socket }) => {
         const peer = new Peer({
-            initiator, trickle: true, stream, config: ICE_SERVERS,
+            initiator, trickle: true, stream: streamRef.current, config: ICE_SERVERS,
             sdpTransform: sdp => {
                 let modified = sdp.replace('useinbandfec=1', 'useinbandfec=1; stereo=1; maxaveragebitrate=128000');
                 if (modified.indexOf('m=video') !== -1) {
@@ -473,11 +472,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             }
         });
         peer.on('signal', s => {
-            if (initiator) socket.emit('sending-signal', { userToSignal: target, callerId: socket.id, signal: s, userName: user?.fullName || 'Anonymous', userAvatar: user?.imageUrl });
-            else socket.emit('returning-signal', { callerId: target, signal: s });
+            socket.emit('signal', { to: target, signal: s });
         });
         peer.on('error', err => console.error(`Peer [${target}]:`, err.message));
-        if (!initiator && signal) peer.signal(signal);
         return peer;
     }, [user]);
 
@@ -572,7 +569,22 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     };
 
     const openPanel = (p) => { setPanel(prev => prev === p ? null : p); if (p === 'chat') setUnread(0); };
-    const copyRoom = () => { navigator.clipboard.writeText(inviteUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+    const copyRoom = () => {
+        const link = (inviteUrl && !inviteUrl.includes('localhost')) ? inviteUrl : `${window.location.origin}?room=${roomId}`;
+        navigator.clipboard.writeText(link).then(() => {
+            setCopied(true); setTimeout(() => setCopied(false), 2000);
+            showToast('Link copied to clipboard! 📋');
+        }).catch(() => {
+            const el = document.createElement('textarea');
+            el.value = link;
+            document.body.appendChild(el);
+            el.select();
+            document.execCommand('copy');
+            document.body.removeChild(el);
+            setCopied(true); setTimeout(() => setCopied(false), 2000);
+            showToast('Link copied! 📋');
+        });
+    };
 
     const D = isDarkMode;
     const bg = D ? '#110608' : '#f0f0f5';
