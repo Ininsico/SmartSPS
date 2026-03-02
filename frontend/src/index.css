@@ -1,17 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
+
 :root {
-  --bg-main: #000000;
-  --bg-surface: rgba(18, 18, 18, 0.8);
-  --bg-card: rgba(24, 24, 24, 0.9);
-  --accent-primary: #ffffff;
-  --accent-secondary: #f4f4f5;
-  --text-primary: #ffffff;
-  --text-secondary: #a1a1aa;
-  --border-glass: rgba(255, 255, 255, 0.15);
-  --shadow-premium: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
-  --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --bg-main: #ffffff;
+  --bg-surface: rgba(255, 255, 255, 0.8);
+  --bg-card: #f4f4f5;
+  --accent-primary: #000000;
+  --accent-secondary: #000000;
+  --text-primary: #000000;
+  --text-secondary: #52525b;
+  --border-glass: rgba(0, 0, 0, 0.1);
+  --shadow-premium: 0 20px 40px -10px rgba(0, 0, 0, 0.05);
+  --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
 
 * {
   margin: 0;
@@ -40,10 +41,8 @@ body {
 }
 
 .gradient-text {
-  background: linear-gradient(to right, #ffffff, #a1a1aa);
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+  color: var(--text-primary);
+  font-weight: 800;
 }
 
 .premium-button {

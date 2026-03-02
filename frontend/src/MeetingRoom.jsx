@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import io from 'socket.io-client';
+import Peer from 'simple-peer';
 import {
     Mic, MicOff, Video, VideoOff, ScreenShare,
     MessageSquare, Users, Settings, PhoneOff,
@@ -6,10 +8,153 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
+const VideoTile = ({ peer, name }) => {
+    const ref = useRef();
+
+    useEffect(() => {
+        peer.on('stream', (stream) => {
+            ref.current.srcObject = stream;
+        });
+    }, [peer]);
+
+    return (
+        <motion.div layout className="video-tile glass-morphism">
+            <video playsInline autoPlay ref={ref} className="remote-video" />
+            <div className="tile-info">
+                <span>{name}</span>
+            </div>
+        </motion.div>
+    );
+};
+
 const MeetingRoom = ({ roomId, onLeave }) => {
+    const [peers, setPeers] = useState([]);
     const [micOn, setMicOn] = useState(true);
     const [videoOn, setVideoOn] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+
+    const socketRef = useRef();
+    const userVideo = useRef();
+    const peersRef = useRef([]);
+    const streamRef = useRef();
+
+    useEffect(() => {
+        socketRef.current = io.connect('http://localhost:5000');
+
+        // Get Local Stream
+        navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+            streamRef.current = stream;
+            if (userVideo.current) {
+                userVideo.current.srcObject = stream;
+            }
+
+            // Join Room
+            socketRef.current.emit('join-room', { roomId, userId: socketRef.current.id });
+
+            // Receive existing users in the room
+            socketRef.current.on('all-users', (users) => {
+                const peersArr = [];
+                users.forEach((userId) => {
+                    const peer = createPeer(userId, socketRef.current.id, stream);
+                    peersRef.current.push({
+                        peerId: userId,
+                        peer,
+                    });
+                    peersArr.push({
+                        peerId: userId,
+                        peer,
+                    });
+                });
+                setPeers(peersArr);
+            });
+
+            // Handle a new user joining
+            socketRef.current.on('user-joined', (payload) => {
+                const peer = addPeer(payload.signal, payload.callerId, stream);
+                peersRef.current.push({
+                    peerId: payload.callerId,
+                    peer,
+                });
+
+                setPeers((prev) => [...prev, { peerId: payload.callerId, peer }]);
+            });
+
+            // Handle signal back from existing user
+            socketRef.current.on('receiving-returned-signal', (payload) => {
+                const item = peersRef.current.find((p) => p.peerId === payload.id);
+                item.peer.signal(payload.signal);
+            });
+
+            // Handle user leaving
+            socketRef.current.on('user-left', (id) => {
+                const peerObj = peersRef.current.find((p) => p.peerId === id);
+                if (peerObj) {
+                    peerObj.peer.destroy();
+                }
+                const filteredPeers = peersRef.current.filter((p) => p.peerId !== id);
+                peersRef.current = filteredPeers;
+                setPeers(filteredPeers);
+            });
+        });
+
+        return () => {
+            if (streamRef.current) {
+                streamRef.current.getTracks().forEach(track => track.stop());
+            }
+            socketRef.current.disconnect();
+        };
+    }, []);
+
+    // WebRTC Handshake logic
+    function createPeer(userToSignal, callerId, stream) {
+        const peer = new Peer({
+            initiator: true,
+            trickle: false,
+            stream,
+        });
+
+        peer.on('signal', (signal) => {
+            socketRef.current.emit('sending-signal', { userToSignal, callerId, signal });
+        });
+
+        return peer;
+    }
+
+    function addPeer(incomingSignal, callerId, stream) {
+        const peer = new Peer({
+            initiator: false,
+            trickle: false,
+            stream,
+        });
+
+        peer.on('signal', (signal) => {
+            socketRef.current.emit('returning-signal', { signal, callerId });
+        });
+
+        peer.signal(incomingSignal);
+        return peer;
+    }
+
+    // UI Handlers
+    const toggleMic = () => {
+        if (streamRef.current) {
+            const audioTrack = streamRef.current.getAudioTracks()[0];
+            if (audioTrack) {
+                audioTrack.enabled = !audioTrack.enabled;
+                setMicOn(audioTrack.enabled);
+            }
+        }
+    };
+
+    const toggleVideo = () => {
+        if (streamRef.current) {
+            const videoTrack = streamRef.current.getVideoTracks()[0];
+            if (videoTrack) {
+                videoTrack.enabled = !videoTrack.enabled;
+                setVideoOn(videoTrack.enabled);
+            }
+        }
+    };
 
     return (
         <div className="meeting-container">
@@ -27,34 +172,23 @@ const MeetingRoom = ({ roomId, onLeave }) => {
                 </header>
 
                 <div className="video-grid">
-                    {/* Main User Video */}
-                    <motion.div
-                        layout
-                        className="video-tile glass-morphism mine"
-                    >
-                        <div className="video-placeholder">
-                            <div className="avatar-fallback">A</div>
-                        </div>
+                    {/* Your Local Video */}
+                    <motion.div layout className="video-tile glass-morphism mine">
+                        <video playsInline muted ref={userVideo} autoPlay className="local-video" />
                         <div className="tile-info">
                             <span>You</span>
                             {!micOn && <MicOff size={14} className="muted-icon" />}
+                            {!videoOn && <VideoOff size={14} className="muted-icon" />}
                         </div>
                     </motion.div>
 
-                    {/* Dummy Participants */}
-                    {[1, 2, 3].map((p) => (
-                        <motion.div
-                            key={p}
-                            layout
-                            className="video-tile glass-morphism"
-                            initial={{ opacity: 0, scale: 0.9 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                        >
-                            <div className="video-placeholder" />
-                            <div className="tile-info">
-                                <span>Participant {p}</span>
-                            </div>
-                        </motion.div>
+                    {/* Remote Peers */}
+                    {peers.map((peerObj) => (
+                        <VideoTile
+                            key={peerObj.peerId}
+                            peer={peerObj.peer}
+                            name={`Participant ${peerObj.peerId.slice(0, 4)}`}
+                        />
                     ))}
                 </div>
 
@@ -67,14 +201,14 @@ const MeetingRoom = ({ roomId, onLeave }) => {
                         <div className="center-controls">
                             <button
                                 className={`control-btn ${!micOn ? 'off' : ''}`}
-                                onClick={() => setMicOn(!micOn)}
+                                onClick={toggleMic}
                             >
                                 {micOn ? <Mic size={20} /> : <MicOff size={20} />}
                             </button>
 
                             <button
                                 className={`control-btn ${!videoOn ? 'off' : ''}`}
-                                onClick={() => setVideoOn(!videoOn)}
+                                onClick={toggleVideo}
                             >
                                 {videoOn ? <Video size={20} /> : <VideoOff size={20} />}
                             </button>
@@ -84,10 +218,7 @@ const MeetingRoom = ({ roomId, onLeave }) => {
                             <button className="control-btn"><Grid size={20} /></button>
                             <button className="control-btn"><MoreVertical size={20} /></button>
 
-                            <button
-                                className="control-btn hangup"
-                                onClick={onLeave}
-                            >
+                            <button className="control-btn hangup" onClick={onLeave}>
                                 <PhoneOff size={20} />
                             </button>
                         </div>
@@ -115,14 +246,14 @@ const MeetingRoom = ({ roomId, onLeave }) => {
                         </div>
                         <div className="sidebar-content">
                             <div className="participant-item">
-                                <div className="p-avatar">A</div>
+                                <div className="p-avatar">Y</div>
                                 <div className="p-name">You (Host)</div>
                                 <Mic size={16} />
                             </div>
-                            {[1, 2, 3].map(p => (
-                                <div key={p} className="participant-item">
+                            {peers.map(p => (
+                                <div key={p.peerId} className="participant-item">
                                     <div className="p-avatar">P</div>
-                                    <div className="p-name">Participant {p}</div>
+                                    <div className="p-name">User {p.peerId.slice(0, 4)}</div>
                                     <Mic size={16} />
                                 </div>
                             ))}
@@ -175,6 +306,7 @@ const MeetingRoom = ({ roomId, onLeave }) => {
           grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
           gap: 1rem;
           padding: 5rem 2rem 7rem;
+          background: #000;
         }
 
         .video-tile {
@@ -183,46 +315,31 @@ const MeetingRoom = ({ roomId, onLeave }) => {
           position: relative;
           overflow: hidden;
           transition: var(--transition-smooth);
-        }
-
-        .video-tile:hover {
-          transform: scale(1.02);
-        }
-
-        .video-placeholder {
-          width: 100%;
-          height: 100%;
           background: #0a0a0a;
           border: 1px solid var(--border-glass);
-          display: flex;
-          align-items: center;
-          justify-content: center;
         }
 
-        .avatar-fallback {
-          width: 80px;
-          height: 80px;
-          border-radius: 50%;
-          background: #ffffff;
-          color: #000000;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 2rem;
-          font-weight: 700;
+        .local-video, .remote-video {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+          transform: rotateY(180deg);
         }
 
         .tile-info {
           position: absolute;
           bottom: 1rem;
           left: 1rem;
-          background: rgba(0, 0, 0, 0.5);
+          background: rgba(0, 0, 0, 0.7);
           padding: 0.4rem 0.8rem;
           border-radius: 0.5rem;
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          backdrop-filter: blur(4px);
+          backdrop-filter: blur(8px);
+          border: 1px solid var(--border-glass);
+          color: white;
+          font-weight: 500;
         }
 
         .control-bar-wrapper {
@@ -255,17 +372,18 @@ const MeetingRoom = ({ roomId, onLeave }) => {
           height: 48px;
           border-radius: 50%;
           border: none;
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(255, 255, 255, 0.05);
           color: white;
           display: flex;
           align-items: center;
           justify-content: center;
           cursor: pointer;
           transition: var(--transition-smooth);
+          border: 1px solid var(--border-glass);
         }
 
         .control-btn:hover {
-          background: rgba(255, 255, 255, 0.2);
+          background: rgba(255, 255, 255, 0.15);
           transform: translateY(-2px);
         }
 
@@ -275,27 +393,14 @@ const MeetingRoom = ({ roomId, onLeave }) => {
         }
 
         .control-btn.hangup {
-          background: #ef4444;
+          background: #ffffff;
+          color: #000000;
           width: 60px;
           border-radius: 1.25rem;
         }
 
         .control-btn.hangup:hover {
-          background: #dc2626;
-        }
-
-        .icon-btn {
-          background: transparent;
-          border: none;
-          color: var(--text-secondary);
-          padding: 0.5rem;
-          cursor: pointer;
-          border-radius: 0.5rem;
-        }
-
-        .icon-btn:hover {
-          color: white;
-          background: rgba(255, 255, 255, 0.05);
+          background: #e5e5e5;
         }
 
         .room-sidebar {
@@ -329,6 +434,7 @@ const MeetingRoom = ({ roomId, onLeave }) => {
           padding: 0.75rem;
           border-radius: 0.75rem;
           background: rgba(255, 255, 255, 0.03);
+          border: 1px solid var(--border-glass);
         }
 
         .p-avatar {
@@ -339,7 +445,7 @@ const MeetingRoom = ({ roomId, onLeave }) => {
           display: flex;
           align-items: center;
           justify-content: center;
-          font-weight: 700;
+          font-weight: 800;
           color: #000;
         }
 
