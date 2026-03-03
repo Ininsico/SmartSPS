@@ -16,8 +16,8 @@ const ICE_SERVERS = {
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
         { urls: 'stun:stun3.l.google.com:19302' },
-        { urls: 'stun:stun4.l.google.com:19302' },
         { urls: 'stun:global.stun.twilio.com:3478' },
+        { urls: 'stun:stun.services.mozilla.com' },
     ],
 };
 
@@ -358,7 +358,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     };
 
     const connectSocket = (stream) => {
-        const socket = io(import.meta.env.VITE_SOCKET_URL || '', {
+        const socketUrl = import.meta.env.VITE_SOCKET_URL || '';
+        console.log('🔌 Connecting to Socket at:', socketUrl || 'WINDOW_ORIGIN (Fallback)');
+
+        const socket = io(socketUrl, {
             transports: ['polling', 'websocket'],
             reconnectionAttempts: Infinity,
             reconnectionDelay: 500,
@@ -401,7 +404,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                     peersRef.current[existingIndex].peer?.destroy();
                     peersRef.current.splice(existingIndex, 1);
                 }
-                const peer = makePeer({ initiator: true, target: socketId, socket });
+                // New user WAITS for existing users to reach out
+                const peer = makePeer({ initiator: false, target: socketId, socket });
                 const obj = { socketId, userId: uid, userName, userAvatar, peer };
                 peersRef.current.push(obj);
                 setPeers(prev => [...prev.filter(p => p.userId !== uid && p.socketId !== socketId), obj]);
@@ -414,7 +418,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                 peersRef.current[existingIndex].peer?.destroy();
                 peersRef.current.splice(existingIndex, 1);
             }
-            const peer = makePeer({ initiator: false, target: socketId, socket });
+            // Existing user INITIATES connection to the new participant
+            const peer = makePeer({ initiator: true, target: socketId, socket });
             const obj = { socketId, userId: uid, userName, userAvatar, peer };
             peersRef.current.push(obj);
             setPeers(prev => [...prev.filter(p => p.userId !== uid && p.socketId !== socketId), obj]);

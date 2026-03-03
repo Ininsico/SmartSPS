@@ -68,6 +68,17 @@ getAdapter().catch(console.error);
 app.use('/api/meetings', meetingRoutes);
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
+// Middleware to ensure adapter is ready before any signals are processed
+io.use(async (socket, next) => {
+    try {
+        await getAdapter();
+        next();
+    } catch (err) {
+        console.error('Adapter Middleware Error:', err);
+        next();
+    }
+});
+
 // Required handlers for Socket.io on Vercel signaling
 io.on('connection', (socket) => {
     socket.on('join-room', async ({ roomId: rawRoomId, userId, userName, userAvatar }) => {
@@ -175,5 +186,11 @@ const PORT = process.env.PORT || 5000;
 if (process.env.NODE_ENV !== 'production') {
     httpServer.listen(PORT, () => console.log(`SmartSPS Backend on :${PORT}`));
 }
+
+// Bridging for Vercel: use the internal Engine.io handleRequest
+// This is required because Vercel only uses the exported handler (app)
+app.all('/socket.io/*', (req, res) => {
+    io.engine.handleRequest(req, res);
+});
 
 export default app;
