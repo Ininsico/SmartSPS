@@ -14,30 +14,28 @@ import * as ctrl from './controllers/meetingController.js';
 const app = express();
 const httpServer = createServer(app);
 
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token, X-Clerk-Instance-Id');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Max-Age', '86400');
-
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
-});
+// SIMPLE CORS - ACCEPT EVERYTHING
+app.use(cors({ origin: true, credentials: true }));
+app.options('*', cors());
 
 app.use(express.json());
 
-let cachedMongoose = null;
-const connectMongoose = async () => {
-    if (cachedMongoose) return cachedMongoose;
-    cachedMongoose = await mongoose.connect(process.env.MONGODB_URI);
-    console.log('Mongoose connected');
-    return cachedMongoose;
-};
-connectMongoose().catch(console.error);
+// MongoDB connection
+mongoose.connect(process.env.MONGODB_URI)
+    .then(() => console.log('MongoDB connected'))
+    .catch(err => console.log('MongoDB error:', err));
+
+const COLLECTION_NAME = 'socket_io_adapter';
+
+// Socket.io with CORS wide open
+const io = new Server(httpServer, {
+    cors: {
+        origin: true, // This acts like '*' but allows Credentials
+        credentials: true,
+        methods: ['GET', 'POST']
+    },
+    path: '/socket.io'
+});
 
 let cachedClient = null;
 const getAdapter = async () => {
