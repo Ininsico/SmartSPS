@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Calendar, Clock, ArrowRight, Menu } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Calendar, Clock, ArrowRight, Menu, Link2, Video, Trash2, Play } from 'lucide-react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MeetingCard from './MeetingCard';
@@ -80,6 +80,48 @@ const ScheduleModal = ({ onClose, isDarkMode, onScheduled }) => {
     );
 };
 
+const JoinModal = ({ onClose, isDarkMode }) => {
+    const [roomInput, setRoomInput] = useState('');
+    const tc = isDarkMode ? '#fff' : '#000';
+    const bg = isDarkMode ? '#1e1a1a' : '#fff';
+    const bc = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+
+    const handleJoin = (e) => {
+        e.preventDefault();
+        if (!roomInput.trim()) return;
+
+        let targetRoom = roomInput.trim();
+        try {
+            const url = new URL(targetRoom);
+            const params = new URLSearchParams(url.search);
+            const roomParam = params.get('room');
+            if (roomParam) targetRoom = roomParam;
+        } catch (e) { }
+
+        window.location.href = `?room=${targetRoom.toLowerCase()}`;
+    };
+
+    return (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
+            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} onClick={e => e.stopPropagation()} style={{ background: bg, width: '100%', maxWidth: '450px', borderRadius: '24px', padding: '2rem', border: `1px solid ${bc}`, color: tc }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h2 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem' }}>Join Meeting</h2>
+                    <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tc }}><X size={24} /></button>
+                </div>
+                <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    <div>
+                        <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem', fontWeight: 700 }}>Meeting Code or Link</label>
+                        <input required type="text" placeholder="e.g. abc-def-ghi or https://..." style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '12px', border: `1px solid ${bc}`, background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f9f9f9', color: tc, outline: 'none' }} value={roomInput} onChange={e => setRoomInput(e.target.value)} autoFocus />
+                    </div>
+                    <PremiumButton type="submit" style={{ width: '100%', marginTop: '1rem' }} icon={ArrowRight}>
+                        Join Now
+                    </PremiumButton>
+                </form>
+            </motion.div>
+        </motion.div>
+    );
+};
+
 const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
     if (!meeting) return null;
     const bg = isDarkMode ? '#1e1a1a' : '#fff';
@@ -126,10 +168,15 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
     const [searchQuery, setSearchQuery] = useState('');
     const [viewType, setViewType] = useState('grid');
     const [meetings, setMeetings] = useState([]);
+    const [recordings, setRecordings] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [recLoading, setRecLoading] = useState(false);
     const [selectedMeeting, setSelectedMeeting] = useState(null);
     const [showSchedule, setShowSchedule] = useState(false);
+    const [showJoin, setShowJoin] = useState(false);
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [activeSection, setActiveSection] = useState('dashboard');
+    const [playingRec, setPlayingRec] = useState(null);
     const { getToken } = useAuth();
     const { user } = useUser();
     const darkMaroon = '#1a0a0a';
@@ -139,7 +186,6 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
 
     const fetchHistory = async (showLoading = true) => {
         try {
-            // Serve stale cache instantly while re-fetching
             if (CACHE_KEY) {
                 const cached = localStorage.getItem(CACHE_KEY);
                 if (cached) {
@@ -147,13 +193,11 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                     if (Date.now() - ts < CACHE_TTL && showLoading) {
                         setMeetings(data);
                         setLoading(false);
-                        // Still refresh in background (stale-while-revalidate)
                         fetchHistory(false);
                         return;
                     }
                 }
             }
-
             const token = await getToken();
             const response = await fetch(`${import.meta.env.VITE_API_URL}/meetings/history`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -161,11 +205,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
             const data = await response.json();
             const meetings = Array.isArray(data) ? data : [];
             setMeetings(meetings);
-
-            // Write to local cache
-            if (CACHE_KEY) {
-                localStorage.setItem(CACHE_KEY, JSON.stringify({ data: meetings, ts: Date.now() }));
-            }
+            if (CACHE_KEY) localStorage.setItem(CACHE_KEY, JSON.stringify({ data: meetings, ts: Date.now() }));
         } catch (err) {
             console.error('Failed to fetch history:', err);
         } finally {
@@ -173,13 +213,60 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
         }
     };
 
+    const fetchRecordings = async () => {
+        setRecLoading(true);
+        try {
+            const REC_KEY = user ? `recordings_${user.id}` : null;
+            if (REC_KEY) {
+                const cached = localStorage.getItem(REC_KEY);
+                if (cached) {
+                    const { data, ts } = JSON.parse(cached);
+                    if (Date.now() - ts < CACHE_TTL) { setRecordings(data); setRecLoading(false); return; }
+                }
+            }
+            const token = await getToken();
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/recordings`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            const recs = Array.isArray(data) ? data : [];
+            setRecordings(recs);
+            if (REC_KEY) localStorage.setItem(REC_KEY, JSON.stringify({ data: recs, ts: Date.now() }));
+        } catch (err) {
+            console.error('Failed to fetch recordings:', err);
+        } finally {
+            setRecLoading(false);
+        }
+    };
+
+    const deleteRecording = async (id) => {
+        try {
+            const token = await getToken();
+            await fetch(`${import.meta.env.VITE_API_URL}/recordings/${id}`, {
+                method: 'DELETE',
+                headers: { Authorization: `Bearer ${token}` },
+            });
+            setRecordings(prev => prev.filter(r => r._id !== id));
+            if (user?.id) localStorage.removeItem(`recordings_${user.id}`);
+        } catch (err) {
+            console.error('Delete failed:', err);
+        }
+    };
+
+    const fmtDuration = (s) => s > 0 ? `${Math.floor(s / 60)}m ${s % 60}s` : 'N/A';
+    const fmtSize = (b) => b > 1e6 ? `${(b / 1e6).toFixed(1)} MB` : b > 1e3 ? `${(b / 1e3).toFixed(0)} KB` : `${b} B`;
+
     useEffect(() => {
         if (!user) return;
         fetchHistory();
-        // Refresh every 60s while dashboard is open
+        fetchRecordings();
         const interval = setInterval(() => fetchHistory(false), CACHE_TTL);
         return () => clearInterval(interval);
     }, [user]);
+
+    useEffect(() => {
+        if (activeSection === 'recordings') fetchRecordings();
+    }, [activeSection]);
 
     const filteredMeetings = useMemo(() => {
         return meetings.filter(m => m.title?.toLowerCase().includes(searchQuery.toLowerCase()) || m.roomId?.toLowerCase().includes(searchQuery.toLowerCase()));
@@ -188,51 +275,114 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
     return (
         <div className="dashboard-root">
             <div className={`sidebar-container ${sidebarOpen ? 'open' : ''}`}>
-                <Sidebar isDarkMode={isDarkMode} onScheduleClick={() => { setShowSchedule(true); setSidebarOpen(false); }} />
+                <Sidebar
+                    isDarkMode={isDarkMode}
+                    activeSection={activeSection}
+                    onScheduleClick={() => { setShowSchedule(true); setSidebarOpen(false); }}
+                    onRecordingsClick={() => { setActiveSection('recordings'); setSidebarOpen(false); }}
+                />
             </div>
             {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
             <div className="main-content">
                 <TopBar isDarkMode={isDarkMode} toggleTheme={() => setIsDarkMode(!isDarkMode)} onSignOut={onSignOut} onMenuClick={() => setSidebarOpen(true)} />
                 <div className="scroll-area">
-                    <section className="section-header">
-                        <h1 className="title">Meetings</h1>
-                        <div style={{ display: 'flex', gap: '0.75rem' }}>
-                            <PremiumButton variant="secondary" icon={Calendar} onClick={() => setShowSchedule(true)} className="hide-mobile">
-                                Schedule
-                            </PremiumButton>
-                            <PremiumButton variant="primary" icon={Plus} onClick={onNewMeeting}>
-                                New
-                            </PremiumButton>
-                        </div>
-                    </section>
-                    <section className="filters-section">
-                        <div className="search-box">
-                            <Search size={16} color={isDarkMode ? "rgba(255,255,255,0.2)" : "#ccc"} />
-                            <input type="text" placeholder="Search meetings..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                        </div>
-                    </section>
-                    {loading ? (
-                        <div className="empty-state">
-                            <Loader2 size={40} className="animate-spin" />
-                            <p>Fetching your universe...</p>
-                        </div>
-                    ) : filteredMeetings.length === 0 ? (
-                        <div className="empty-state">
-                            <CalendarOff size={48} />
-                            <h2>No meetings found</h2>
-                        </div>
+                    {activeSection === 'recordings' ? (
+                        <>
+                            <section className="section-header">
+                                <h1 className="title">Recordings</h1>
+                                <button onClick={() => setActiveSection('dashboard')} style={{ background: 'none', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.15)' : '#ddd'}`, borderRadius: 10, padding: '8px 16px', color: 'inherit', cursor: 'pointer', fontWeight: 600 }}>← Back</button>
+                            </section>
+                            {recLoading ? (
+                                <div className="empty-state"><Loader2 size={40} className="animate-spin" /><p>Loading recordings...</p></div>
+                            ) : recordings.length === 0 ? (
+                                <div className="empty-state"><Video size={48} /><h2>No recordings yet</h2><p style={{ opacity: 0.5, fontSize: '0.9rem' }}>Start a recording in a meeting to see it here.</p></div>
+                            ) : (
+                                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '1.5rem' }}>
+                                    {recordings.map(rec => (
+                                        <div key={rec._id} style={{ borderRadius: 16, overflow: 'hidden', background: isDarkMode ? 'rgba(255,255,255,0.04)' : '#f9f9f9', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : '#eee'}`, transition: 'transform 0.2s' }}>
+                                            {/* Thumbnail */}
+                                            <div
+                                                onClick={() => setPlayingRec(rec)}
+                                                style={{ position: 'relative', aspectRatio: '16/9', background: '#111', cursor: 'pointer', overflow: 'hidden' }}
+                                            >
+                                                {rec.thumbnail
+                                                    ? <img src={rec.thumbnail} alt={rec.title} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                                    : <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Video size={40} color="#555" /></div>
+                                                }
+                                                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: 'opacity 0.2s' }}
+                                                    onMouseEnter={e => e.currentTarget.style.opacity = 1}
+                                                    onMouseLeave={e => e.currentTarget.style.opacity = 0}
+                                                >
+                                                    <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                                        <Play size={22} color="#000" fill="#000" />
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {/* Info */}
+                                            <div style={{ padding: '1rem' }}>
+                                                <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: 6, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{rec.title}</div>
+                                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', opacity: 0.55, marginBottom: 12 }}>
+                                                    <span>{new Date(rec.createdAt).toLocaleDateString()}</span>
+                                                    <span>{fmtDuration(rec.duration)} · {fmtSize(rec.size)}</span>
+                                                </div>
+                                                <div style={{ display: 'flex', gap: 8 }}>
+                                                    <a href={rec.url} target="_blank" rel="noreferrer" style={{ flex: 1, padding: '8px 0', background: '#e53e3e', color: '#fff', borderRadius: 10, border: 'none', fontWeight: 700, fontSize: '0.8rem', textAlign: 'center', textDecoration: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}><ExternalLink size={13} /> Download</a>
+                                                    <button onClick={() => deleteRecording(rec._id)} style={{ padding: '8px 12px', background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f0f0f0', border: 'none', borderRadius: 10, color: '#e53e3e', cursor: 'pointer' }}><Trash2 size={14} /></button>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     ) : (
-                        <div className={`meetings-grid ${viewType}`}>
-                            {filteredMeetings.map((meeting) => (
-                                <MeetingCard key={meeting._id} meeting={meeting} isDarkMode={isDarkMode} onShowDetails={() => setSelectedMeeting(meeting)} />
-                            ))}
-                        </div>
+                        <>
+                            <section className="section-header">
+                                <h1 className="title">Meetings</h1>
+                                <div style={{ display: 'flex', gap: '0.75rem' }}>
+                                    <PremiumButton variant="secondary" icon={Link2} onClick={() => setShowJoin(true)} className="hide-mobile">Join</PremiumButton>
+                                    <PremiumButton variant="secondary" icon={Calendar} onClick={() => setShowSchedule(true)} className="hide-mobile">Schedule</PremiumButton>
+                                    <PremiumButton variant="primary" icon={Plus} onClick={onNewMeeting}>New</PremiumButton>
+                                </div>
+                            </section>
+                            <section className="filters-section">
+                                <div className="search-box">
+                                    <Search size={16} color={isDarkMode ? "rgba(255,255,255,0.2)" : "#ccc"} />
+                                    <input type="text" placeholder="Search meetings..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                                </div>
+                            </section>
+                            {loading ? (
+                                <div className="empty-state"><Loader2 size={40} className="animate-spin" /><p>Fetching your universe...</p></div>
+                            ) : filteredMeetings.length === 0 ? (
+                                <div className="empty-state"><CalendarOff size={48} /><h2>No meetings found</h2></div>
+                            ) : (
+                                <div className={`meetings-grid ${viewType}`}>
+                                    {filteredMeetings.map((meeting) => (
+                                        <MeetingCard key={meeting._id} meeting={meeting} isDarkMode={isDarkMode} onShowDetails={() => setSelectedMeeting(meeting)} />
+                                    ))}
+                                </div>
+                            )}
+                        </>
                     )}
                 </div>
             </div>
             <AnimatePresence>
                 {selectedMeeting && <MeetingDetailModal meeting={selectedMeeting} onClose={() => setSelectedMeeting(null)} isDarkMode={isDarkMode} />}
                 {showSchedule && <ScheduleModal onClose={() => setShowSchedule(false)} isDarkMode={isDarkMode} onScheduled={fetchHistory} />}
+                {showJoin && <JoinModal onClose={() => setShowJoin(false)} isDarkMode={isDarkMode} />}
+                {playingRec && (
+                    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setPlayingRec(null)}
+                        style={{ position: 'fixed', inset: 0, zIndex: 2000, background: 'rgba(0,0,0,0.92)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '2rem' }}>
+                        <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 900, background: '#000', borderRadius: 16, overflow: 'hidden', position: 'relative' }}>
+                            <button onClick={() => setPlayingRec(null)} style={{ position: 'absolute', top: 12, right: 12, zIndex: 10, background: 'rgba(0,0,0,0.6)', border: 'none', borderRadius: 8, color: '#fff', padding: '6px 10px', cursor: 'pointer' }}><X size={18} /></button>
+                            <video src={playingRec.url} controls autoPlay style={{ width: '100%', display: 'block', maxHeight: '80vh' }} />
+                            <div style={{ padding: '1rem', color: '#fff' }}>
+                                <div style={{ fontWeight: 700 }}>{playingRec.title}</div>
+                                <div style={{ fontSize: '0.8rem', opacity: 0.5 }}>{new Date(playingRec.createdAt).toLocaleString()} · {fmtDuration(playingRec.duration)}</div>
+                            </div>
+                        </div>
+                    </motion.div>
+                )}
             </AnimatePresence>
             <style dangerouslySetInnerHTML={{
                 __html: `
@@ -260,7 +410,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                     .search-box { width: 100%; }
                 }
             ` }} />
-        </div>
+        </div >
     );
 };
 

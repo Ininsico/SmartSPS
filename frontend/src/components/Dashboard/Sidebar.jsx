@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, LayoutGrid, Calendar, History, Settings } from 'lucide-react';
+import { Home, LayoutGrid, Calendar, History, Settings, Video } from 'lucide-react';
 
-const Sidebar = ({ isDarkMode, onScheduleClick }) => {
+const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, activeSection }) => {
     const darkMaroon = '#1a0a0a';
 
     const styles = {
@@ -39,9 +39,10 @@ const Sidebar = ({ isDarkMode, onScheduleClick }) => {
     };
 
     const menuItems = [
-        { icon: LayoutGrid, active: true, title: 'Dashboard' },
-        { icon: Calendar, title: 'Schedule Meeting', onClick: onScheduleClick },
-        { icon: History, title: 'History' }
+        { icon: LayoutGrid, id: 'dashboard', active: activeSection === 'dashboard' || !activeSection, title: 'Dashboard', onClick: () => { } },
+        { icon: Calendar, id: 'schedule', title: 'Schedule Meeting', onClick: onScheduleClick },
+        { icon: Video, id: 'recordings', active: activeSection === 'recordings', title: 'Recordings', onClick: onRecordingsClick },
+        { icon: History, id: 'history', title: 'History' },
     ];
 
     return (

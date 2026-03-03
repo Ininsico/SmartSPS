@@ -1,11 +1,54 @@
 import React, { useState, useEffect } from 'react';
-import { Video, Plus, Keyboard, ExternalLink, Sun, Moon } from 'lucide-react';
+import { Video, Plus, Keyboard, ExternalLink, Sun, Moon, ArrowRight, X, Link2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PremiumButton from './PremiumButton';
 import { UserButton } from '@clerk/clerk-react';
 
+const JoinModal = ({ onClose, isDarkMode, onJoin }) => {
+  const [roomInput, setRoomInput] = useState('');
+  const tc = isDarkMode ? '#fff' : '#000';
+  const bg = isDarkMode ? '#1e1a1a' : '#fff';
+  const bc = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+
+  const handleJoin = (e) => {
+    e.preventDefault();
+    if (!roomInput.trim()) return;
+
+    let targetRoom = roomInput.trim();
+    try {
+      const url = new URL(targetRoom);
+      const params = new URLSearchParams(url.search);
+      const roomParam = params.get('room');
+      if (roomParam) targetRoom = roomParam;
+    } catch (e) { }
+
+    onJoin(targetRoom.toLowerCase());
+  };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
+      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} onClick={e => e.stopPropagation()} style={{ background: bg, width: '100%', maxWidth: '450px', borderRadius: '24px', padding: '2rem', border: `1px solid ${bc}`, color: tc }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+          <h2 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem' }}>Join Meeting</h2>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tc }}><X size={24} /></button>
+        </div>
+        <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem', fontWeight: 700 }}>Meeting Code or Link</label>
+            <input required type="text" placeholder="e.g. abc-def-ghi or https://..." style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '12px', border: `1px solid ${bc}`, background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f9f9f9', color: tc, outline: 'none' }} value={roomInput} onChange={e => setRoomInput(e.target.value)} autoFocus />
+          </div>
+          <PremiumButton type="submit" style={{ width: '100%', marginTop: '1rem' }} icon={ArrowRight}>
+            Join Now
+          </PremiumButton>
+        </form>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
   const [roomName, setRoomName] = useState('');
+  const [showJoin, setShowJoin] = useState(false);
   const [wordIndex, setWordIndex] = useState(0);
   const words = ['everyone', 'teams', 'creatives', 'founders', 'family', 'future'];
 
@@ -82,6 +125,15 @@ const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
                   Start a Meeting
                 </PremiumButton>
 
+                <PremiumButton
+                  className="hero-btn-secondary"
+                  variant="secondary"
+                  icon={Link2}
+                  onClick={() => setShowJoin(true)}
+                >
+                  Join Meeting
+                </PremiumButton>
+
                 <div className="input-group-centered" style={{ background: D ? 'rgba(255,255,255,0.03)' : '#fdfdfd', borderColor: D ? 'rgba(255,255,255,0.1)' : '#e5e5e5' }}>
                   <div className="input-wrapper-light">
                     <Keyboard size={20} className="input-icon-left" strokeWidth={1.5} color={sc} />
@@ -112,6 +164,10 @@ const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
           </div>
         </motion.div>
       </main>
+
+      <AnimatePresence>
+        {showJoin && <JoinModal onClose={() => setShowJoin(false)} isDarkMode={D} onJoin={onJoin} />}
+      </AnimatePresence>
 
       <style dangerouslySetInnerHTML={{
         __html: `
@@ -224,6 +280,14 @@ const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
           font-size: 1rem;
           border-radius: 99px;
           box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+        }
+
+        .hero-btn-secondary {
+          height: 60px;
+          padding: 0 2.5rem;
+          font-size: 1rem;
+          border-radius: 99px;
+          border: 1px solid ${bc};
         }
 
         .input-group-centered {
