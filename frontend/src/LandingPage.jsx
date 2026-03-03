@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Video, Plus, Keyboard, ExternalLink, ShieldCheck } from 'lucide-react';
+import { Video, Plus, Keyboard, ExternalLink, Sun, Moon } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import PremiumButton from './PremiumButton';
 import { UserButton } from '@clerk/clerk-react';
 
-const LandingPage = ({ onJoin, onStartMeeting }) => {
+const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
   const [roomName, setRoomName] = useState('');
   const [wordIndex, setWordIndex] = useState(0);
   const words = ['everyone', 'teams', 'creatives', 'founders', 'family', 'future'];
@@ -16,17 +16,27 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
     return () => clearInterval(interval);
   }, []);
 
+  const D = isDarkMode;
+  const bg = D ? '#1a0a0a' : '#ffffff';
+  const tc = D ? '#ffffff' : '#000000';
+  const sc = D ? '#888' : '#666';
+  const bc = D ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+  const nb = D ? 'rgba(26,10,10,0.8)' : 'rgba(255,255,255,0.8)';
+
   return (
     <div className="landing-container">
       <nav className="landing-nav glass-morphism">
         <div className="logo-section">
-          <Video className="logo-icon" size={28} />
-          <span className="logo-text">smart<span className="bold-text">Meet</span></span>
+          <Video className="logo-icon" size={28} color={tc} />
+          <span className="logo-text" style={{ color: tc }}>smart<span className="bold-text">Meet</span></span>
         </div>
         <div className="nav-right">
           <div className="nav-actions">
+            <button onClick={() => setIsDarkMode(!D)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tc, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', borderRadius: '50%', '&:hover': { background: bc } }}>
+              {D ? <Sun size={20} /> : <Moon size={20} />}
+            </button>
             <UserButton afterSignOutUrl="/" />
-            <span className="nav-time">
+            <span className="nav-time" style={{ color: sc }}>
               {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString()}
             </span>
           </div>
@@ -41,7 +51,7 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
           <div className="hero-content">
-            <h1 className="hero-title">
+            <h1 className="hero-title" style={{ color: tc }}>
               Secure video conferencing <br /> for <span className="word-rotator-container">
                 <AnimatePresence mode="wait">
                   <motion.span
@@ -57,7 +67,7 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
                 </AnimatePresence>
               </span>
             </h1>
-            <p className="hero-subtitle">
+            <p className="hero-subtitle" style={{ color: sc }}>
               Experience crystal-clear communication with smartMeet <br />
               Enterprise-grade security simplified for your everyday connections
             </p>
@@ -72,14 +82,15 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
                   Start a Meeting
                 </PremiumButton>
 
-                <div className="input-group-centered">
+                <div className="input-group-centered" style={{ background: D ? 'rgba(255,255,255,0.03)' : '#fdfdfd', borderColor: D ? 'rgba(255,255,255,0.1)' : '#e5e5e5' }}>
                   <div className="input-wrapper-light">
-                    <Keyboard size={20} className="input-icon-left" strokeWidth={1.5} />
+                    <Keyboard size={20} className="input-icon-left" strokeWidth={1.5} color={sc} />
                     <input
                       type="text"
                       placeholder="Enter a code or link"
                       value={roomName}
                       onChange={(e) => setRoomName(e.target.value)}
+                      style={{ color: tc }}
                     />
                   </div>
                   <PremiumButton
@@ -92,10 +103,10 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
                 </div>
               </div>
 
-              <div className="divider-minimal" />
+              <div className="divider-minimal" style={{ background: bc }} />
 
-              <div className="secondary-info">
-                <p>New to smartMeet? <a href="#" className="link-action">Create an account <ExternalLink size={14} /></a></p>
+              <div className="secondary-info" style={{ color: sc }}>
+                <p>New to smartMeet? <a href="#" className="link-action" style={{ color: tc, borderBottomColor: tc }}>Create an account <ExternalLink size={14} /></a></p>
               </div>
             </div>
           </div>
@@ -108,9 +119,10 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           min-height: 100vh;
           display: flex;
           flex-direction: column;
-          background-color: #ffffff;
-          background-image: radial-gradient(#00000005 1px, transparent 1px);
+          background-color: ${bg};
+          background-image: radial-gradient(${D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} 1px, transparent 1px);
           background-size: 32px 32px;
+          transition: background-color 0.4s ease;
         }
 
         .landing-nav {
@@ -119,9 +131,10 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           align-items: center;
           padding: 1.5rem 3rem;
           margin: 0;
-          border-bottom: 1px solid rgba(0,0,0,0.05);
-          background: rgba(255,255,255,0.8);
+          border-bottom: 1px solid ${bc};
+          background: ${nb};
           backdrop-filter: blur(10px);
+          z-index: 100;
         }
 
         .logo-section {
@@ -131,11 +144,6 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           font-size: 1.75rem;
           font-weight: 500;
           letter-spacing: -0.5px;
-          color: #000;
-        }
-
-        .logo-icon {
-          color: #000;
         }
 
         .bold-text {
@@ -146,13 +154,8 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           display: flex;
           align-items: center;
           gap: 1.5rem;
-          color: #555;
           font-weight: 500;
           font-size: 0.95rem;
-        }
-
-        .icon-muted {
-          color: #ccc;
         }
 
         .landing-main {
@@ -175,7 +178,6 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           letter-spacing: -2px;
           font-weight: 800;
           margin-bottom: 2.5rem;
-          color: #000;
         }
 
         .underline-text {
@@ -194,7 +196,6 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
 
         .hero-subtitle {
           font-size: 1.5rem;
-          color: #666;
           margin-bottom: 4rem;
           line-height: 1.5;
           max-width: 750px;
@@ -228,16 +229,15 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
         .input-group-centered {
           display: flex;
           align-items: center;
-          background: #fdfdfd;
           padding: 0.5rem;
           border-radius: 99px;
-          border: 1px solid #e5e5e5;
+          border: 1px solid;
           transition: all 0.3s ease;
         }
 
         .input-group-centered:focus-within {
-          border-color: #000;
-          box-shadow: 0 0 0 1px #000;
+          border-color: ${tc};
+          box-shadow: 0 0 0 1px ${tc};
         }
 
         .input-wrapper-light {
@@ -253,7 +253,6 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           font-size: 1rem;
           padding: 0.75rem 0;
           outline: none;
-          color: #000;
           width: 220px;
           font-weight: 600;
           font-family: 'Montserrat', sans-serif;
@@ -266,27 +265,19 @@ const LandingPage = ({ onJoin, onStartMeeting }) => {
           letter-spacing: 1px !important;
         }
 
-        .join-button-link:disabled {
-          color: #ccc;
-          cursor: not-allowed;
-        }
-
         .divider-minimal {
           width: 100px;
           height: 1px;
-          background: #eee;
         }
 
         .secondary-info {
           font-size: 1rem;
-          color: #888;
         }
 
         .link-action {
-          color: #000;
           text-decoration: none;
           font-weight: 700;
-          border-bottom: 2px solid #000;
+          border-bottom: 2px solid;
           padding-bottom: 1px;
           display: inline-flex;
           align-items: center;

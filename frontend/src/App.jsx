@@ -13,11 +13,18 @@ import { mediaManager } from './mediaManager';
 function App() {
   const [view, setView] = useState('landing');
   const [roomId, setRoomId] = useState('');
-  const [isDarkMode, setIsDarkMode] = useState(true);
+  const [isDarkMode, setIsDarkMode] = useState(() => {
+    const saved = localStorage.getItem('theme');
+    return saved ? saved === 'dark' : true;
+  });
   const [mediaConfig, setMediaConfig] = useState({ micOn: true, videoOn: true });
 
   const { isLoaded, isSignedIn, user } = useUser();
   const { signOut } = useClerk();
+
+  useEffect(() => {
+    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+  }, [isDarkMode]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -29,10 +36,8 @@ function App() {
 
   useEffect(() => {
     if (!isLoaded) return;
-
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
-
     if (roomFromUrl && view !== 'meeting' && view !== 'preview') {
       if (isSignedIn) {
         setView('preview');
@@ -88,9 +93,9 @@ function App() {
 
   if (!isLoaded) {
     return (
-      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#fff' }}>
+      <div style={{ height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: isDarkMode ? '#1a0a0a' : '#fff' }}>
         <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-          <span style={{ fontFamily: 'Montserrat', fontWeight: 800, fontSize: '1.25rem' }}>smartMeet</span>
+          <span style={{ fontFamily: 'Montserrat', fontWeight: 800, fontSize: '1.25rem', color: isDarkMode ? '#fff' : '#000' }}>smartMeet</span>
         </motion.div>
       </div>
     );
@@ -100,7 +105,6 @@ function App() {
     <ErrorBoundary>
       <div className="app-root">
         {view === '404' && <NotFoundPage />}
-
         {view !== '404' && (
           <>
             <SignedIn>
@@ -132,22 +136,23 @@ function App() {
                 />
               )}
             </SignedIn>
-
             <SignedOut>
               {view === 'landing' ? (
                 <LandingPage
                   onJoin={handleJoinAttempt}
                   onStartMeeting={navigateToLogin}
+                  isDarkMode={isDarkMode}
+                  setIsDarkMode={setIsDarkMode}
                 />
               ) : (
                 <LoginPage
                   onBack={() => setView('landing')}
+                  isDarkMode={isDarkMode}
                 />
               )}
             </SignedOut>
           </>
         )}
-
         <style dangerouslySetInnerHTML={{
           __html: `
           .app-root {
@@ -155,6 +160,10 @@ function App() {
             background-color: ${isDarkMode ? '#1a0a0a' : '#ffffff'};
             color: ${isDarkMode ? '#ffffff' : '#000000'};
             transition: background-color 0.3s ease;
+          }
+          body {
+            margin: 0;
+            background-color: ${isDarkMode ? '#1a0a0a' : '#ffffff'};
           }
         `}} />
       </div>

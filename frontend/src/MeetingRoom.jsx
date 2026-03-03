@@ -85,8 +85,8 @@ const RemoteTile = ({ peer, name, avatar, isDark, peerState, isHost, onAdminMute
             <video playsInline autoPlay ref={ref} style={videoFill} />
             <div style={gradOver} />
             {!hasStream && (
-                <div style={{ position: 'absolute', inset: 0, background: isDark ? '#1a0808' : '#e5e5ea', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', background: isDark ? '#2a1010' : '#d0d0d8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.08)' }}>
+                <div style={{ position: 'absolute', inset: 0, background: isDark ? '#1a1010' : '#e5e5ea', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', background: isDark ? '#2a1a1a' : '#d0d0d8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.08)' }}>
                         {avatar ? <img src={avatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.8rem', fontWeight: 800, color: isDark ? 'rgba(255,255,255,0.25)' : 'rgba(0,0,0,0.2)' }}>{initials}</span>}
                     </div>
                 </div>
@@ -98,106 +98,61 @@ const RemoteTile = ({ peer, name, avatar, isDark, peerState, isHost, onAdminMute
             {isHost && (
                 <button onClick={() => onAdminMute(socketId, isMuted)} title={isMuted ? 'Request Unmute' : 'Mute Participant'}
                     style={{ position: 'absolute', top: 10, left: handUp ? 46 : 10, background: 'rgba(0,0,0,0.55)', border: 'none', borderRadius: 99, padding: '4px 8px', cursor: 'pointer', color: isMuted ? '#fc8181' : '#48bb78', display: 'flex', alignItems: 'center' }}>
-                    {isMuted ? <VolumeX size={13} /> : <Volume2 size={13} />}
+                    {isMuted ? <MicOff size={14} /> : <Mic size={14} />}
                 </button>
             )}
             <div style={{ position: 'absolute', bottom: 12, left: 12, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '4px 10px', color: '#fff' }}>
                 {avatar && <img src={avatar} alt="" style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'cover' }} />}
-                <span style={{ fontSize: '0.76rem', fontWeight: 700 }}>{name || 'Anonymous'}</span>
+                <span style={{ fontSize: '0.76rem', fontWeight: 700 }}>{name}</span>
                 {isMuted && <MicOff size={11} color="#fc8181" />}
             </div>
         </motion.div>
     );
 };
 
-const Btn = ({ onClick, children, danger, active, label, wide, isDark, badge, style: xs }) => (
-    <button onClick={onClick} title={label} style={{
-        position: 'relative', width: wide ? 72 : 52, height: 52,
-        borderRadius: wide ? '1.5rem' : '50%', border: 'none', cursor: 'pointer', flexShrink: 0,
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        transition: 'all 0.15s', backdropFilter: 'blur(8px)',
-        background: danger ? '#e53e3e' : active ? (isDark ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.14)') : (isDark ? 'rgba(255,255,255,0.09)' : 'rgba(0,0,0,0.07)'),
-        color: danger ? '#fff' : active ? (isDark ? '#fff' : '#000') : (isDark ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)'),
-        boxShadow: danger ? '0 4px 20px rgba(229,62,62,0.35)' : 'none', ...xs
-    }}
-        onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.08)'}
-        onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'}
-    >
-        {children}
-        {badge > 0 && (
-            <div style={{ position: 'absolute', top: 4, right: 4, width: 17, height: 17, borderRadius: '50%', background: '#e53e3e', color: '#fff', fontSize: '0.6rem', fontWeight: 900, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {badge > 9 ? '9+' : badge}
-            </div>
-        )}
-    </button>
-);
-
-function grid(n) {
-    const b = { display: 'grid', gap: '1rem', width: '100%', height: '100%', alignContent: 'center', justifyContent: 'center' };
-    if (n === 1) return { ...b, gridTemplateColumns: 'minmax(0, 900px)', gridTemplateRows: 'minmax(0, 560px)' };
-    if (n === 2) return { ...b, gridTemplateColumns: 'repeat(2, minmax(0, 600px))', gridAutoRows: 'minmax(0, 400px)' };
-    if (n <= 4) return { ...b, gridTemplateColumns: 'repeat(2, 1fr)' };
-    if (n <= 6) return { ...b, gridTemplateColumns: 'repeat(3, 1fr)' };
-    return { ...b, gridTemplateColumns: 'repeat(4, 1fr)' };
-}
-
 const ChatPanel = ({ messages, onSend, onClose, user, isDark, textCol, barBg, barBord, mutedCol }) => {
     const [text, setText] = useState('');
-    const bottomRef = useRef();
-    useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
-    const send = () => { const t = text.trim(); if (t) { onSend(t); setText(''); } };
-
+    const ref = useRef();
+    useEffect(() => { if (ref.current) ref.current.scrollTop = ref.current.scrollHeight; }, [messages]);
+    const send = () => { if (text.trim()) { onSend(text); setText(''); } };
     return (
-        <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-            style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 340, background: isDark ? '#140608' : '#fff', borderLeft: `1px solid ${barBord}`, zIndex: 200, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.35)' }}>
+        <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 300, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 320, background: barBg, borderLeft: `1px solid ${barBord}`, zIndex: 200, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.35)' }}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: `1px solid ${barBord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontWeight: 800, fontSize: '1rem', color: textCol }}>In-Call Chat</span>
+                <span style={{ fontWeight: 800, fontSize: '1rem', color: textCol }}>Chat</span>
                 <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: mutedCol }}><X size={18} /></button>
             </div>
-            <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                {messages.length === 0 && <div style={{ color: mutedCol, textAlign: 'center', fontSize: '0.82rem', marginTop: '2rem' }}>No messages yet. Say hi! 👋</div>}
-                {messages.map(m => {
-                    const isMine = m.from === 'me';
-                    return (
-                        <div key={m.id} style={{ display: 'flex', flexDirection: isMine ? 'row-reverse' : 'row', gap: 8, alignItems: 'flex-end' }}>
-                            {!isMine && <img src={m.userAvatar || ''} alt="" onError={e => e.target.style.display = 'none'} style={{ width: 28, height: 28, borderRadius: '50%', objectFit: 'cover', flexShrink: 0, background: isDark ? '#2a1010' : '#ddd' }} />}
-                            <div style={{ maxWidth: '72%' }}>
-                                {!isMine && <div style={{ fontSize: '0.68rem', color: mutedCol, marginBottom: 3, fontWeight: 700 }}>{m.userName}</div>}
-                                <div style={{ background: isMine ? '#e53e3e' : (isDark ? 'rgba(255,255,255,0.08)' : '#f0f0f5'), color: isMine ? '#fff' : textCol, borderRadius: isMine ? '14px 14px 4px 14px' : '14px 14px 14px 4px', padding: '8px 12px', fontSize: '0.85rem', lineHeight: 1.45, wordBreak: 'break-word' }}>
-                                    {m.text}
-                                </div>
-                                <div style={{ fontSize: '0.62rem', color: mutedCol, marginTop: 3, textAlign: isMine ? 'right' : 'left' }}>
-                                    {new Date(m.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                </div>
-                            </div>
+            <div ref={ref} style={{ flex: 1, overflowY: 'auto', padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {messages.map(m => (
+                    <div key={m.id} style={{ display: 'flex', flexDirection: 'column', alignSelf: m.from === 'me' ? 'flex-end' : 'flex-start', maxWidth: '85%' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, justifyContent: m.from === 'me' ? 'flex-end' : 'flex-start' }}>
+                            {m.from !== 'me' && m.userAvatar && <img src={m.userAvatar} alt="" style={{ width: 14, height: 14, borderRadius: '50%' }} />}
+                            <span style={{ fontSize: '0.65rem', fontWeight: 700, color: mutedCol }}>{m.from === 'me' ? 'You' : m.userName}</span>
                         </div>
-                    );
-                })}
-                <div ref={bottomRef} />
+                        <div style={{ background: m.from === 'me' ? '#e53e3e' : (isDark ? 'rgba(255,255,255,0.06)' : '#f3f3f6'), color: m.from === 'me' ? '#fff' : textCol, padding: '0.65rem 0.9rem', borderRadius: m.from === 'me' ? '1rem 0.2rem 1rem 1rem' : '0.2rem 1rem 1rem 1rem', fontSize: '0.82rem', lineHeight: 1.4, wordBreak: 'break-word', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+                            {m.text}
+                        </div>
+                    </div>
+                ))}
             </div>
-            <div style={{ padding: '0.85rem 1rem', borderTop: `1px solid ${barBord}`, display: 'flex', gap: 8 }}>
-                <input
-                    value={text} onChange={e => setText(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && send()}
-                    placeholder="Type a message…"
-                    style={{ flex: 1, background: isDark ? 'rgba(255,255,255,0.06)' : '#f0f0f5', border: `1px solid ${barBord}`, borderRadius: 12, padding: '0.6rem 1rem', color: textCol, fontSize: '0.85rem', outline: 'none', caretColor: '#e53e3e' }}
-                />
-                <button onClick={send} style={{ width: 42, height: 42, borderRadius: '50%', background: '#e53e3e', border: 'none', cursor: 'pointer', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Send size={16} />
-                </button>
+            <div style={{ padding: '1.25rem', borderTop: `1px solid ${barBord}`, background: isDark ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.02)' }}>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                    <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Say something…"
+                        style={{ width: '100%', background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', border: `1px solid ${barBord}`, borderRadius: 99, padding: '0.75rem 3rem 0.75rem 1.25rem', fontSize: '0.85rem', color: textCol, outline: 'none' }} />
+                    <button onClick={send} disabled={!text.trim()} style={{ position: 'absolute', right: 6, width: 32, height: 32, borderRadius: '50%', background: text.trim() ? '#e53e3e' : 'transparent', border: 'none', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}>
+                        <Send size={14} />
+                    </button>
+                </div>
             </div>
         </motion.div>
     );
 };
 
 const ParticipantsPanel = ({ peers, peerStates, user, mySocketId, isHost, hostSocketId, onAdminMute, onClose, isDark, textCol, barBg, barBord, mutedCol, myMuted, myHand }) => {
-    const all = [
-        { socketId: 'me', userName: user?.fullName || 'You', userAvatar: user?.imageUrl, muted: myMuted, handRaised: myHand, isYou: true },
-        ...peers.map(p => ({ ...p, muted: peerStates[p.socketId]?.muted ?? false, handRaised: peerStates[p.socketId]?.handRaised ?? false }))
-    ];
+    const all = [{ socketId: mySocketId, userId: user?.id, userName: user?.fullName || 'You', userAvatar: user?.imageUrl, isYou: true, muted: myMuted, handRaised: myHand }, ...peers.map(p => ({ ...p, muted: peerStates[p.socketId]?.muted, handRaised: peerStates[p.socketId]?.handRaised }))];
     return (
-        <motion.div initial={{ x: '100%' }} animate={{ x: 0 }} exit={{ x: '100%' }} transition={{ type: 'spring', stiffness: 320, damping: 32 }}
-            style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 300, background: isDark ? '#140608' : '#fff', borderLeft: `1px solid ${barBord}`, zIndex: 200, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.35)' }}>
+        <motion.div initial={{ x: 300, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 300, opacity: 0 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            style={{ position: 'fixed', right: 0, top: 0, bottom: 0, width: 320, background: barBg, borderLeft: `1px solid ${barBord}`, zIndex: 200, display: 'flex', flexDirection: 'column', boxShadow: '-8px 0 32px rgba(0,0,0,0.35)' }}>
             <div style={{ padding: '1rem 1.25rem', borderBottom: `1px solid ${barBord}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontWeight: 800, fontSize: '1rem', color: textCol }}>Participants ({all.length})</span>
                 <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: mutedCol }}><X size={18} /></button>
@@ -205,7 +160,7 @@ const ParticipantsPanel = ({ peers, peerStates, user, mySocketId, isHost, hostSo
             <div style={{ flex: 1, overflowY: 'auto', padding: '0.75rem' }}>
                 {all.map(p => (
                     <div key={p.socketId} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '0.65rem 0.75rem', borderRadius: 10, marginBottom: 4, background: p.isYou ? (isDark ? 'rgba(229,62,62,0.1)' : 'rgba(229,62,62,0.06)') : 'transparent' }}>
-                        <div style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: isDark ? '#2a1010' : '#ddd' }}>
+                        <div style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', overflow: 'hidden', flexShrink: 0, background: isDark ? '#2a1a1a' : '#ddd' }}>
                             {p.userAvatar && <img src={p.userAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                         </div>
                         <div style={{ flex: 1, minWidth: 0 }}>
@@ -233,7 +188,7 @@ const ParticipantsPanel = ({ peers, peerStates, user, mySocketId, isHost, hostSo
 
 const ReactionPicker = ({ onPick, onClose, isDark, barBord }) => (
     <motion.div initial={{ opacity: 0, y: 10, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.9 }} transition={{ duration: 0.15 }}
-        style={{ position: 'absolute', bottom: 70, left: '50%', transform: 'translateX(-50%)', background: isDark ? '#1a0608' : '#fff', border: `1px solid ${barBord}`, borderRadius: 16, padding: '0.65rem', display: 'flex', gap: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 500 }}>
+        style={{ position: 'absolute', bottom: 70, left: '50%', transform: 'translateX(-50%)', background: isDark ? '#1a0a0a' : '#fff', border: `1px solid ${barBord}`, borderRadius: 16, padding: '0.65rem', display: 'flex', gap: 6, boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 500 }}>
         {REACTIONS.map(e => (
             <button key={e} onClick={() => { onPick(e); onClose(); }} style={{ fontSize: '1.5rem', background: 'none', border: 'none', cursor: 'pointer', transition: 'transform 0.12s', padding: '4px 6px', borderRadius: 8 }}
                 onMouseEnter={el => el.currentTarget.style.transform = 'scale(1.35)'}
@@ -254,7 +209,7 @@ const InviteModal = ({ roomId, inviteUrl, onClose, isDark, textCol, barBord, mut
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(10px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }} onClick={onClose}>
             <motion.div initial={{ opacity: 0, scale: 0.9, y: 16 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.9 }} transition={{ type: 'spring', stiffness: 300, damping: 26 }}
-                onClick={e => e.stopPropagation()} style={{ background: isDark ? '#1a0608' : '#fff', border: `1px solid ${barBord}`, borderRadius: '1.5rem', padding: '2rem', width: '100%', maxWidth: 460, boxShadow: '0 32px 64px rgba(0,0,0,0.55)', color: textCol }}>
+                onClick={e => e.stopPropagation()} style={{ background: isDark ? '#1a0a0a' : '#fff', border: `1px solid ${barBord}`, borderRadius: '1.5rem', padding: '2rem', width: '100%', maxWidth: 460, boxShadow: '0 32px 64px rgba(0,0,0,0.55)', color: textCol }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1.5rem' }}>
                     <div>
                         <h2 style={{ margin: 0, fontWeight: 800, fontSize: '1.25rem', letterSpacing: '-0.5px' }}>Invite people</h2>
@@ -332,16 +287,15 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     const initMedia = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: {
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 },
-                    frameRate: { ideal: 30 },
-                    facingMode: 'user',
-                },
+                video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },
                 audio: {
                     echoCancellation: true,
                     noiseSuppression: true,
                     autoGainControl: true,
+                    googEchoCancellation: true,
+                    googAutoGainControl: true,
+                    googNoiseSuppression: true,
+                    googHighpassFilter: true,
                     sampleRate: 48000,
                 }
             });
@@ -352,308 +306,147 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             stream.getVideoTracks().forEach(t => t.enabled = videoOn);
             if (localRef.current) localRef.current.srcObject = stream;
             connectSocket(stream);
-        } catch (err) {
-            console.error('Media error:', err);
-        }
+        } catch (err) { console.error('Media error:', err); }
     };
 
     const connectSocket = (stream) => {
         const socketUrl = import.meta.env.VITE_SOCKET_URL || '';
-        console.log('🔌 Connecting to Socket at:', socketUrl || 'WINDOW_ORIGIN (Fallback)');
-
-        const socket = io(socketUrl, {
-            transports: ['polling', 'websocket'],
-            reconnectionAttempts: Infinity,
-            reconnectionDelay: 500,
-            reconnectionDelayMax: 2000,
-            timeout: 20000,
-        });
+        const socket = io(socketUrl, { transports: ['polling', 'websocket'], reconnectionAttempts: Infinity, reconnectionDelay: 500, reconnectionDelayMax: 2000, timeout: 20000 });
         socketRef.current = socket;
-
-        const join = () => {
-            if (!user?.id) return;
-            socket.emit('join-room', {
-                roomId,
-                userId: user.id,
-                userName: user?.fullName || user?.username || 'Anonymous',
-                userAvatar: user?.imageUrl,
-            });
-        };
-
+        const join = () => { if (!user?.id) return; socket.emit('join-room', { roomId, userId: user.id, userName: user?.fullName || user?.username || 'Anonymous', userAvatar: user?.imageUrl }); };
         socket.on('connect', join);
         socket.on('reconnect', join);
-
-        socket.on('host-status', (amHost) => {
-            setIsHost(amHost);
-            if (amHost) setHostSocketId(socket.id);
-        });
-
-        socket.on('invite-url', (url) => {
-            setInviteUrl(url);
-        });
-
-        socket.on('host-changed', ({ newHostSocketId }) => {
-            setHostSocketId(newHostSocketId);
-            if (newHostSocketId === socket.id) { setIsHost(true); showToast('You are now the host 👑'); }
-        });
-
+        socket.on('host-status', (amHost) => { setIsHost(amHost); if (amHost) setHostSocketId(socket.id); });
+        socket.on('invite-url', (url) => setInviteUrl(url));
+        socket.on('host-changed', ({ newHostSocketId }) => { setHostSocketId(newHostSocketId); if (newHostSocketId === socket.id) { setIsHost(true); showToast('You are now the host 👑'); } });
         socket.on('all-users', (users) => {
             users.forEach(({ socketId, userId: uid, userName, userAvatar }) => {
                 const existingIndex = peersRef.current.findIndex(p => p.userId === uid || p.socketId === socketId);
-                if (existingIndex !== -1) {
-                    peersRef.current[existingIndex].peer?.destroy();
-                    peersRef.current.splice(existingIndex, 1);
-                }
-                // New user WAITS for existing users to reach out
+                if (existingIndex !== -1) { peersRef.current[existingIndex].peer?.destroy(); peersRef.current.splice(existingIndex, 1); }
                 const peer = makePeer({ initiator: false, target: socketId, socket });
                 const obj = { socketId, userId: uid, userName, userAvatar, peer };
                 peersRef.current.push(obj);
                 setPeers(prev => [...prev.filter(p => p.userId !== uid && p.socketId !== socketId), obj]);
             });
         });
-
         socket.on('peer-joined', ({ socketId, userId: uid, userName, userAvatar }) => {
             const existingIndex = peersRef.current.findIndex(p => p.userId === uid || p.socketId === socketId);
-            if (existingIndex !== -1) {
-                peersRef.current[existingIndex].peer?.destroy();
-                peersRef.current.splice(existingIndex, 1);
-            }
-            // Existing user INITIATES connection to the new participant
+            if (existingIndex !== -1) { peersRef.current[existingIndex].peer?.destroy(); peersRef.current.splice(existingIndex, 1); }
             const peer = makePeer({ initiator: true, target: socketId, socket });
             const obj = { socketId, userId: uid, userName, userAvatar, peer };
             peersRef.current.push(obj);
             setPeers(prev => [...prev.filter(p => p.userId !== uid && p.socketId !== socketId), obj]);
         });
-
         socket.on('signal', ({ from, signal }) => {
             let item = peersRef.current.find(p => p.socketId === from);
-            if (!item) {
-                const peer = makePeer({ initiator: false, target: from, socket });
-                item = { socketId: from, userName: 'Connecting...', peer };
-                peersRef.current.push(item);
-                setPeers(prev => [...prev, item]);
-            }
+            if (!item) { const peer = makePeer({ initiator: false, target: from, socket }); item = { socketId: from, userName: 'Connecting...', peer }; peersRef.current.push(item); setPeers(prev => [...prev, item]); }
             item.peer.signal(signal);
         });
-        socket.on('ice-candidate', ({ from, candidate }) => {
-            const item = peersRef.current.find(p => p.socketId === from);
-            if (item?.peer) { try { item.peer.signal({ candidate }); } catch (_) { } }
-        });
-
-        socket.on('user-left', (id) => {
-            peersRef.current.find(p => p.socketId === id)?.peer?.destroy();
-            peersRef.current = peersRef.current.filter(p => p.socketId !== id);
-            setPeers(prev => prev.filter(p => p.socketId !== id));
-            setPeerStates(prev => { const n = { ...prev }; delete n[id]; return n; });
-        });
-
-        socket.on('reaction', ({ from, userName, userAvatar, emoji }) => {
-            const id = `${from}-${Date.now()}`;
-            setReactions(prev => [...prev, { id, emoji, name: userName?.split(' ')[0] || 'Someone' }]);
-        });
-
-        socket.on('peer-hand-raised', ({ socketId, userName, raised }) => {
-            setPeerStates(prev => ({ ...prev, [socketId]: { ...(prev[socketId] || {}), handRaised: raised } }));
-            if (raised) showToast(`✋ ${userName} raised their hand`);
-        });
-
-        socket.on('chat-message', (msg) => {
-            setMessages(prev => [...prev, msg]);
-            if (panel !== 'chat') setUnread(u => u + 1);
-        });
-
-        socket.on('peer-state-change', ({ socketId, muted }) => {
-            setPeerStates(prev => ({ ...prev, [socketId]: { ...(prev[socketId] || {}), muted } }));
-        });
-
-        socket.on('force-muted', ({ byName }) => {
-            setMicOn(false);
-            streamRef.current?.getAudioTracks().forEach(t => t.enabled = false);
-            socket.emit('state-change', { roomId, muted: true });
-            showToast(`🔇 ${byName} muted you`);
-        });
-
-        socket.on('unmute-requested', ({ byName }) => {
-            showToast(`🎙️ ${byName} is asking you to unmute`);
-        });
+        socket.on('ice-candidate', ({ from, candidate }) => { const item = peersRef.current.find(p => p.socketId === from); if (item?.peer) { try { item.peer.signal({ candidate }); } catch (_) { } } });
+        socket.on('user-left', (id) => { peersRef.current.find(p => p.socketId === id)?.peer?.destroy(); peersRef.current = peersRef.current.filter(p => p.socketId !== id); setPeers(prev => prev.filter(p => p.socketId !== id)); setPeerStates(prev => { const n = { ...prev }; delete n[id]; return n; }); });
+        socket.on('reaction', ({ from, userName, userAvatar, emoji }) => { if (from !== socket.id) setReactions(p => [...p, { id: `${from}-${Date.now()}`, emoji, name: userName }]); });
+        socket.on('chat-message', (msg) => { if (msg.from !== socket.id) { setMessages(p => [...p, msg]); if (panel !== 'chat') setUnread(u => u + 1); } });
+        socket.on('peer-state-change', ({ socketId, muted, handRaised: rh }) => { setPeerStates(p => ({ ...p, [socketId]: { ...p[socketId], muted: muted ?? p[socketId]?.muted, handRaised: rh ?? p[socketId]?.handRaised } })); });
+        socket.on('peer-hand-raised', ({ socketId, raised }) => { setPeerStates(p => ({ ...p, [socketId]: { ...p[socketId], handRaised: raised } })); });
+        socket.on('force-muted', ({ byName }) => { setMicOn(false); streamRef.current?.getAudioTracks().forEach(t => t.enabled = false); socket.emit('state-change', { roomId, muted: true }); showToast(`Muted by ${byName} 🤫`); });
     };
 
-    useEffect(() => {
-        if (user?.id && socketRef.current?.connected) {
-            socketRef.current.emit('join-room', {
-                roomId,
-                userId: user.id,
-                userName: user.fullName || user.username || 'Anonymous',
-                userAvatar: user.imageUrl,
-            });
-        }
-    }, [user, roomId]);
-
     const makePeer = useCallback(({ initiator, target, socket }) => {
-        const peer = new Peer({
-            initiator, trickle: true, stream: streamRef.current, config: ICE_SERVERS,
-            sdpTransform: sdp => {
-                let modified = sdp.replace('useinbandfec=1', 'useinbandfec=1; stereo=1; maxaveragebitrate=128000');
-                if (modified.indexOf('m=video') !== -1) {
-                    modified = modified.replace('a=mid:video\r\n', 'a=mid:video\r\nb=AS:1500\r\n');
-                }
-                return modified;
-            }
-        });
-        peer.on('signal', s => {
-            socket.emit('signal', { to: target, signal: s });
-        });
+        const peer = new Peer({ initiator, trickle: true, config: ICE_SERVERS, stream: streamRef.current });
+        peer.on('signal', s => socket.emit('signal', { to: target, signal: s }));
         peer.on('error', err => console.error(`Peer [${target}]:`, err.message));
         return peer;
     }, [user]);
 
-    const hangup = () => {
-        peersRef.current.forEach(p => p.peer?.destroy());
-        peersRef.current = [];
-        mediaManager.unregister(streamRef.current);
-        streamRef.current = null;
-        socketRef.current?.disconnect();
-        onLeave();
-    };
-
-    const toggleMic = () => {
-        const next = !micOn;
-        setMicOn(next);
-        streamRef.current?.getAudioTracks().forEach(t => t.enabled = next);
-        socketRef.current?.emit('state-change', { roomId, muted: !next });
-    };
-
+    const hangup = () => { peersRef.current.forEach(p => p.peer?.destroy()); peersRef.current = []; mediaManager.unregister(streamRef.current); streamRef.current = null; socketRef.current?.disconnect(); onLeave(); };
+    const toggleMic = () => { const next = !micOn; setMicOn(next); streamRef.current?.getAudioTracks().forEach(t => t.enabled = next); socketRef.current?.emit('state-change', { roomId, muted: !next }); };
     const toggleVideo = async () => {
-        const next = !videoOn;
-        setVideoOn(next);
-        if (!next) {
-            streamRef.current?.getVideoTracks().forEach(t => { t.stop(); t.enabled = false; });
-        } else {
+        const next = !videoOn; setVideoOn(next);
+        if (!next) { streamRef.current?.getVideoTracks().forEach(t => { t.stop(); t.enabled = false; }); } else {
             try {
                 const ns = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } });
                 const t = ns.getVideoTracks()[0];
                 const b = streamRef.current;
-                if (b) {
-                    b.getVideoTracks().forEach(v => { v.stop(); b.removeTrack(v); });
-                    b.addTrack(t);
-                    if (localRef.current) localRef.current.srcObject = b;
-                    peersRef.current.forEach(({ peer }) => peer._pc?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(t));
-                }
+                if (b) { b.getVideoTracks().forEach(v => { v.stop(); b.removeTrack(v); }); b.addTrack(t); if (localRef.current) localRef.current.srcObject = b; peersRef.current.forEach(({ peer }) => peer._pc?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(t)); }
             } catch (_) { setVideoOn(false); }
         }
     };
-
     const revertCam = async () => {
-        setIsSharing(false);
-        screenRef.current?.stop();
-        screenRef.current = null;
+        setIsSharing(false); screenRef.current?.stop(); screenRef.current = null;
         try {
-            const cs = await navigator.mediaDevices.getUserMedia({ video: true });
-            const ct = cs.getVideoTracks()[0];
-            const b = streamRef.current;
-            if (b) {
-                b.getVideoTracks().forEach(v => { v.stop(); b.removeTrack(v); });
-                b.addTrack(ct);
-                if (localRef.current) localRef.current.srcObject = b;
-                peersRef.current.forEach(({ peer }) => peer._pc?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(ct));
-            }
+            const cs = await navigator.mediaDevices.getUserMedia({ video: true }); const ct = cs.getVideoTracks()[0]; const b = streamRef.current;
+            if (b) { b.getVideoTracks().forEach(v => { v.stop(); b.removeTrack(v); }); b.addTrack(ct); if (localRef.current) localRef.current.srcObject = b; peersRef.current.forEach(({ peer }) => peer._pc?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(ct)); }
             setVideoOn(true);
         } catch (e) { console.error(e); }
     };
-
     const toggleShare = async () => {
         if (isSharing) { await revertCam(); return; }
         try {
             const ss = await navigator.mediaDevices.getDisplayMedia({ video: { cursor: 'always', width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: true });
-            const st = ss.getVideoTracks()[0];
-            screenRef.current = st;
-            setIsSharing(true);
+            const st = ss.getVideoTracks()[0]; screenRef.current = st; setIsSharing(true);
             if (localRef.current) localRef.current.srcObject = new MediaStream([st, ...(streamRef.current?.getAudioTracks() ?? [])]);
             peersRef.current.forEach(({ peer }) => peer._pc?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(st));
             st.addEventListener('ended', revertCam, { once: true });
         } catch (err) { if (err.name !== 'NotAllowedError') console.error(err); }
     };
-
-    const toggleHand = () => {
-        const next = !handRaised;
-        setHandRaised(next);
-        socketRef.current?.emit('raise-hand', { roomId, raised: next });
-    };
-
-    const sendReaction = (emoji) => {
-        socketRef.current?.emit('reaction', { roomId, emoji });
-        const id = `me-${Date.now()}`;
-        setReactions(prev => [...prev, { id, emoji, name: 'You' }]);
-    };
-
-    const sendMessage = (text) => {
-        const msg = { id: `me-${Date.now()}`, from: 'me', userName: user?.fullName || 'You', userAvatar: user?.imageUrl, text, timestamp: new Date().toISOString() };
-        setMessages(prev => [...prev, msg]);
-        socketRef.current?.emit('chat-message', { roomId, text });
-    };
-
-    const adminMute = (targetSocketId, isMuted) => {
-        if (isMuted) socketRef.current?.emit('admin-request-unmute', { targetSocketId, roomId });
-        else socketRef.current?.emit('admin-mute', { targetSocketId, roomId });
-    };
-
+    const toggleHand = () => { const next = !handRaised; setHandRaised(next); socketRef.current?.emit('raise-hand', { roomId, raised: next }); };
+    const sendReaction = (emoji) => { socketRef.current?.emit('reaction', { roomId, emoji }); setReactions(prev => [...prev, { id: `me-${Date.now()}`, emoji, name: 'You' }]); };
+    const sendMessage = (text) => { const msg = { id: `me-${Date.now()}`, from: 'me', userName: user?.fullName || 'You', userAvatar: user?.imageUrl, text, timestamp: new Date().toISOString() }; setMessages(prev => [...prev, msg]); socketRef.current?.emit('chat-message', { roomId, text }); };
+    const adminMute = (targetSocketId, isMuted) => { if (isMuted) socketRef.current?.emit('admin-request-unmute', { targetSocketId, roomId }); else socketRef.current?.emit('admin-mute', { targetSocketId, roomId }); };
     const openPanel = (p) => { setPanel(prev => prev === p ? null : p); if (p === 'chat') setUnread(0); };
     const copyRoom = () => {
         const link = `${window.location.origin}?room=${roomId}`;
-        navigator.clipboard.writeText(link).then(() => {
-            setCopied(true); setTimeout(() => setCopied(false), 2000);
-            showToast('Link copied to clipboard! 📋');
-        }).catch(() => {
-            const el = document.createElement('textarea');
-            el.value = link;
-            document.body.appendChild(el);
-            el.select();
-            document.execCommand('copy');
-            document.body.removeChild(el);
-            setCopied(true); setTimeout(() => setCopied(false), 2000);
-            showToast('Link copied! 📋');
+        navigator.clipboard.writeText(link).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); showToast('Link copied to clipboard! 📋'); }).catch(() => {
+            const el = document.createElement('textarea'); el.value = link; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); setCopied(true); setTimeout(() => setCopied(false), 2000); showToast('Link copied! 📋');
         });
     };
 
     const D = isDarkMode;
-    const bg = D ? '#110608' : '#f0f0f5';
-    const gb = D ? '#0c0305' : '#e0e0e8';
-    const bb = D ? 'rgba(12,3,5,0.92)' : 'rgba(255,255,255,0.94)';
+    const bg = D ? '#1a0a0a' : '#f0f0f5';
+    const gb = D ? '#140608' : '#e0e0e8';
+    const bb = D ? 'rgba(26,10,10,0.92)' : 'rgba(255,255,255,0.94)';
     const bd = D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
     const tc = D ? '#ffffff' : '#0a0a0a';
     const mc = D ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.45)';
     const n = peers.length + 1;
     const mi = user?.fullName ? user.fullName.split(' ').map(x => x[0]).join('').slice(0, 2).toUpperCase() : 'ME';
 
+    const Btn = ({ onClick, children, label, active, danger, wide, badge, style, isDark }) => (
+        <div style={{ position: 'relative' }}>
+            <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.95 }} onClick={onClick} title={label}
+                style={{ width: wide ? 100 : 44, height: 44, borderRadius: 12, border: `1px solid ${active || danger ? 'transparent' : bd}`, background: danger ? '#e53e3e' : (active ? (isDark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.08)') : 'transparent'), color: danger || (active && !isDark) ? '#fff' : (active && isDark ? '#fff' : tc), cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', ...style }}>
+                {children}
+            </motion.button>
+            {badge > 0 && <span style={{ position: 'absolute', top: -4, right: -4, background: '#e53e3e', color: '#fff', fontSize: '0.65rem', fontWeight: 800, padding: '2px 5px', borderRadius: 6, border: `2px solid ${bg}` }}>{badge}</span>}
+        </div>
+    );
+    const grid = (n) => {
+        let cols = 1; if (n > 1) cols = 2; if (n > 4) cols = 3; if (n > 9) cols = 4;
+        return { display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '1.25rem', width: '100%', maxWidth: 1400, margin: '0 auto', height: '100%', alignItems: 'center', justifyContent: 'center' };
+    };
+
     return (
         <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', background: bg, fontFamily: "'Inter','Montserrat',sans-serif", overflow: 'hidden', transition: 'background 0.4s', position: 'relative' }}>
-
             <AnimatePresence>
                 {toast && (
                     <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-                        style={{ position: 'fixed', top: 72, left: '50%', transform: 'translateX(-50%)', background: D ? 'rgba(20,6,8,0.95)' : 'rgba(255,255,255,0.95)', color: tc, border: `1px solid ${bd}`, borderRadius: 12, padding: '0.6rem 1.25rem', fontSize: '0.85rem', fontWeight: 600, zIndex: 800, backdropFilter: 'blur(12px)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
+                        style={{ position: 'fixed', top: 72, left: '50%', transform: 'translateX(-50%)', background: D ? 'rgba(26,10,10,0.95)' : 'rgba(255,255,255,0.95)', color: tc, border: `1px solid ${bd}`, borderRadius: 12, padding: '0.6rem 1.25rem', fontSize: '0.85rem', fontWeight: 600, zIndex: 800, backdropFilter: 'blur(12px)', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
                         {toast}
                     </motion.div>
                 )}
             </AnimatePresence>
-
             <AnimatePresence>
-                {reactions.map(r => (
-                    <FloatingReaction key={r.id} emoji={r.emoji} name={r.name} id={r.id} onDone={() => setReactions(p => p.filter(x => x.id !== r.id))} />
-                ))}
+                {reactions.map(r => (<FloatingReaction key={r.id} emoji={r.emoji} name={r.name} id={r.id} onDone={() => setReactions(p => p.filter(x => x.id !== r.id))} />))}
             </AnimatePresence>
-
             <header style={{ height: 60, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 1.75rem', background: bb, backdropFilter: 'blur(24px)', borderBottom: `1px solid ${bd}`, zIndex: 50 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.65rem' }}>
                     <VideoIcon size={20} color="#e53e3e" strokeWidth={2.5} />
                     <span style={{ fontWeight: 800, fontSize: '1.05rem', letterSpacing: '-0.5px', color: tc }}>smartMeet</span>
                     {isHost && <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#f6c90e', background: 'rgba(246,201,14,0.12)', border: '1px solid rgba(246,201,14,0.3)', borderRadius: 6, padding: '2px 7px', letterSpacing: '0.5px' }}>HOST</span>}
                 </div>
-
                 <button onClick={copyRoom} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '0.35rem 1rem', borderRadius: 99, cursor: 'pointer', border: `1px solid ${bd}`, background: D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', color: mc, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.8px', fontFamily: 'monospace' }}>
                     <Shield size={13} />{roomId.toUpperCase()}{copied ? <Check size={13} color="#48bb78" /> : <Copy size={13} />}
                 </button>
-
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
                     <button onClick={() => setShowInvite(true)} style={{ display: 'flex', alignItems: 'center', gap: 5, padding: '0.35rem 0.85rem', borderRadius: 8, border: `1px solid ${bd}`, background: 'transparent', color: tc, fontSize: '0.78rem', fontWeight: 700, cursor: 'pointer' }}>
                         <UserPlus size={15} /><span>Invite</span>
@@ -661,21 +454,18 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                     <button onClick={() => setIsDarkMode(!D)} style={{ width: 34, height: 34, borderRadius: '50%', border: `1px solid ${bd}`, background: 'transparent', color: tc, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {D ? <Sun size={15} /> : <Moon size={15} />}
                     </button>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: mc, fontSize: '0.85rem', fontWeight: 600 }}>
-                        <Users size={15} /><span>{n}</span>
-                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 4, color: mc, fontSize: '0.85rem', fontWeight: 600 }}> <Users size={15} /><span>{n}</span> </div>
                     <UserButton afterSignOutUrl="/" />
                 </div>
             </header>
-
             <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', background: gb, padding: '1.25rem', overflow: 'hidden', transition: 'background 0.4s', paddingRight: panel ? 'calc(1.25rem + 320px)' : '1.25rem' }}>
                 <div style={grid(n)}>
                     <motion.div layout style={{ ...tileBase, boxShadow: handRaised ? '0 0 0 3px #f6c90e, 0 8px 32px rgba(0,0,0,0.5)' : tileBase.boxShadow }}>
                         <video playsInline muted autoPlay ref={localRef} style={{ ...videoFill, transform: isSharing ? 'none' : 'rotateY(180deg)' }} />
                         <div style={gradOver} />
                         {!videoOn && !isSharing && (
-                            <div style={{ position: 'absolute', inset: 0, background: D ? '#1a0808' : '#e0e0e8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', background: D ? '#2a1010' : '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.08)' }}>
+                            <div style={{ position: 'absolute', inset: 0, background: D ? '#1a0a0a' : '#e0e0e8', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', background: D ? '#2a1a1a' : '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.08)' }}>
                                     {user?.imageUrl ? <img src={user.imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.8rem', fontWeight: 800, color: D ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }}>{mi}</span>}
                                 </div>
                             </div>
@@ -689,7 +479,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                             {isHost && <Crown size={10} color="#f6c90e" />}
                         </div>
                     </motion.div>
-
                     <AnimatePresence>
                         {peers.map(p => (
                             <RemoteTile key={p.socketId} peer={p.peer} name={p.userName} avatar={p.userAvatar}
@@ -699,71 +488,28 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                     </AnimatePresence>
                 </div>
             </div>
-
             <div style={{ position: 'relative', flexShrink: 0, height: 84, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 2rem', background: bb, backdropFilter: 'blur(24px)', borderTop: `1px solid ${bd}`, zIndex: 60 }}>
-                <div style={{ width: 110, color: mc, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.5px', fontVariantNumeric: 'tabular-nums' }}>
-                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </div>
-
+                <div style={{ width: 110, color: mc, fontSize: '0.82rem', fontWeight: 700, letterSpacing: '0.5px', fontVariantNumeric: 'tabular-nums' }}> {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.55rem' }}>
-                    <Btn onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} active={micOn} danger={!micOn} isDark={D}>
-                        {micOn ? <Mic size={19} /> : <MicOff size={19} />}
-                    </Btn>
-                    <Btn onClick={toggleVideo} label={videoOn ? 'Stop Camera' : 'Start Camera'} active={videoOn} danger={!videoOn} isDark={D}>
-                        {videoOn ? <VideoIcon size={19} /> : <VideoOff size={19} />}
-                    </Btn>
-
+                    <Btn onClick={toggleMic} label={micOn ? 'Mute' : 'Unmute'} active={micOn} danger={!micOn} isDark={D}> {micOn ? <Mic size={19} /> : <MicOff size={19} />} </Btn>
+                    <Btn onClick={toggleVideo} label={videoOn ? 'Stop Camera' : 'Start Camera'} active={videoOn} danger={!videoOn} isDark={D}> {videoOn ? <VideoIcon size={19} /> : <VideoOff size={19} />} </Btn>
                     <div style={{ width: 1, height: 26, background: D ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)', margin: '0 0.1rem' }} />
-
-                    <Btn onClick={toggleShare} label={isSharing ? 'Stop Share' : 'Share Screen'} isDark={D}
-                        style={isSharing ? { background: 'rgba(66,153,225,0.22)', color: '#63b3ed', border: '1px solid rgba(66,153,225,0.4)' } : {}}>
-                        {isSharing ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />}
-                    </Btn>
-
-                    <Btn onClick={toggleHand} label={handRaised ? 'Lower Hand' : 'Raise Hand'} active={handRaised} isDark={D}
-                        style={handRaised ? { background: 'rgba(246,201,14,0.2)', color: '#f6c90e', border: '1px solid rgba(246,201,14,0.35)' } : {}}>
-                        <Hand size={18} />
-                    </Btn>
-
-                    <div style={{ position: 'relative' }}>
-                        <Btn label="React" isDark={D} onClick={() => setShowReacts(p => !p)} active={showReacts}>
-                            <span style={{ fontSize: '1.1rem' }}>😊</span>
-                        </Btn>
-                        <AnimatePresence>
-                            {showReacts && <ReactionPicker onPick={sendReaction} onClose={() => setShowReacts(false)} isDark={D} barBord={bd} />}
-                        </AnimatePresence>
-                    </div>
-
+                    <Btn onClick={toggleShare} label={isSharing ? 'Stop Share' : 'Share Screen'} isDark={D} style={isSharing ? { background: 'rgba(66,153,225,0.22)', color: '#63b3ed', border: '1px solid rgba(66,153,225,0.4)' } : {}}> {isSharing ? <ScreenShareOff size={18} /> : <ScreenShare size={18} />} </Btn>
+                    <Btn onClick={toggleHand} label={handRaised ? 'Lower Hand' : 'Raise Hand'} active={handRaised} isDark={D} style={handRaised ? { background: 'rgba(246,201,14,0.2)', color: '#f6c90e', border: '1px solid rgba(246,201,14,0.35)' } : {}}> <Hand size={18} /> </Btn>
+                    <div style={{ position: 'relative' }}> <Btn label="React" isDark={D} onClick={() => setShowReacts(p => !p)} active={showReacts}> <span style={{ fontSize: '1.1rem' }}>😊</span> </Btn> <AnimatePresence> {showReacts && <ReactionPicker onPick={sendReaction} onClose={() => setShowReacts(false)} isDark={D} barBord={bd} />} </AnimatePresence> </div>
                     <div style={{ width: 1, height: 26, background: D ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)', margin: '0 0.1rem' }} />
-
-                    <Btn onClick={() => openPanel('chat')} label="Chat" active={panel === 'chat'} isDark={D} badge={panel !== 'chat' ? unread : 0}>
-                        <MessageSquare size={18} />
-                    </Btn>
-
-                    <Btn onClick={() => openPanel('participants')} label="Participants" active={panel === 'participants'} isDark={D}>
-                        <Users size={18} />
-                    </Btn>
-
+                    <Btn onClick={() => openPanel('chat')} label="Chat" active={panel === 'chat'} isDark={D} badge={panel !== 'chat' ? unread : 0}> <MessageSquare size={18} /> </Btn>
+                    <Btn onClick={() => openPanel('participants')} label="Participants" active={panel === 'participants'} isDark={D}> <Users size={18} /> </Btn>
                     <div style={{ width: 1, height: 26, background: D ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.12)', margin: '0 0.1rem' }} />
-
-                    <Btn onClick={hangup} label="Leave" danger wide isDark={D}>
-                        <PhoneOff size={19} />
-                    </Btn>
+                    <Btn onClick={hangup} label="Leave" danger wide isDark={D}> <PhoneOff size={19} /> </Btn>
                 </div>
-
-                <div style={{ width: 110, display: 'flex', justifyContent: 'flex-end' }}>
-                    <Btn label="Settings" isDark={D}><Settings size={18} /></Btn>
-                </div>
+                <div style={{ width: 110, display: 'flex', justifyContent: 'flex-end' }}> <Btn label="Settings" isDark={D}><Settings size={18} /></Btn> </div>
             </div>
-
             <AnimatePresence>
                 {panel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} onClose={() => setPanel(null)} user={user} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} />}
                 {panel === 'participants' && <ParticipantsPanel peers={peers} peerStates={peerStates} user={user} mySocketId={socketRef.current?.id} isHost={isHost} hostSocketId={hostSocketId} onAdminMute={adminMute} onClose={() => setPanel(null)} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} myMuted={!micOn} myHand={handRaised} />}
             </AnimatePresence>
-
-            <AnimatePresence>
-                {showInvite && <InviteModal roomId={roomId} inviteUrl={inviteUrl} onClose={() => setShowInvite(false)} isDark={D} textCol={tc} barBord={bd} mutedCol={mc} />}
-            </AnimatePresence>
+            <AnimatePresence> {showInvite && <InviteModal roomId={roomId} inviteUrl={inviteUrl} onClose={() => setShowInvite(false)} isDark={D} textCol={tc} barBord={bd} mutedCol={mc} />} </AnimatePresence>
         </div>
     );
 };

@@ -9,27 +9,26 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
     const [videoOn, setVideoOn] = useState(true);
     const streamRef = useRef(null);
     const videoRef = useRef();
-
     const darkMaroon = '#1a0a0a';
 
     useEffect(() => {
         let isMounted = true;
-
         const startPreview = async () => {
             try {
                 const mediaStream = await navigator.mediaDevices.getUserMedia({
-                    video: true,
-                    audio: true
+                    video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true
+                    }
                 });
-
                 if (!isMounted) {
-                    // If component unmounted while waiting for permission, stop immediately
                     mediaStream.getTracks().forEach(track => track.stop());
                     return;
                 }
-
                 streamRef.current = mediaStream;
-                mediaManager.registerStream(mediaStream); // register globally
+                mediaManager.registerStream(mediaStream);
                 if (videoRef.current) {
                     videoRef.current.srcObject = mediaStream;
                 }
@@ -38,7 +37,6 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
             }
         };
         startPreview();
-
         return () => {
             isMounted = false;
             mediaManager.unregister(streamRef.current);
@@ -127,7 +125,6 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
     };
 
     const handleJoin = () => {
-        // Kill the preview stream — MeetingRoom will open its own fresh stream
         mediaManager.unregister(streamRef.current);
         streamRef.current = null;
         onJoin({ micOn, videoOn });
@@ -164,11 +161,9 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
                         </button>
                     </div>
                 </div>
-
                 <div style={styles.infoSection}>
                     <h2 style={styles.title}>Ready to join?</h2>
                     <p style={{ color: isDarkMode ? '#888' : '#666', fontWeight: 500 }}>Room: <span style={{ color: isDarkMode ? '#fff' : '#000', fontWeight: 700 }}>{roomId}</span></p>
-
                     <div style={{ display: 'flex', gap: '1rem' }}>
                         <button
                             onClick={onBack}

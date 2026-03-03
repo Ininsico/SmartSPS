@@ -1,25 +1,33 @@
 import React from 'react';
 import { SignIn, SignUp } from '@clerk/clerk-react';
 import { motion } from 'framer-motion';
-import { Video } from 'lucide-react';
+import { Video, ArrowLeft } from 'lucide-react';
 
-const LoginPage = ({ mode = 'signin', onBack }) => {
+const LoginPage = ({ mode = 'signin', onBack, isDarkMode }) => {
+  const D = isDarkMode;
+  const bg = D ? '#1a0a0a' : '#ffffff';
+  const tc = D ? '#ffffff' : '#000000';
+  const sc = D ? '#888' : '#666666';
+  const bc = D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+
   const containerStyle = {
     height: '100vh',
     width: '100vw',
     display: 'flex',
     flexDirection: 'column',
-    backgroundColor: '#ffffff',
-    backgroundImage: 'radial-gradient(#00000005 1px, transparent 1px)',
+    backgroundColor: bg,
+    backgroundImage: `radial-gradient(${D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} 1px, transparent 1px)`,
     backgroundSize: '32px 32px',
     overflow: 'hidden',
-    fontFamily: "'Montserrat', sans-serif"
+    fontFamily: "'Montserrat', sans-serif",
+    transition: 'background-color 0.4s ease'
   };
 
   const navStyle = {
-    padding: '1rem 2rem',
+    padding: '1.5rem 3rem',
     display: 'flex',
-    alignItems: 'center'
+    alignItems: 'center',
+    justifyContent: 'space-between'
   };
 
   const logoSectionStyle = {
@@ -28,7 +36,7 @@ const LoginPage = ({ mode = 'signin', onBack }) => {
     gap: '0.5rem',
     fontSize: '1.25rem',
     fontWeight: 500,
-    color: '#000',
+    color: tc,
     cursor: 'pointer'
   };
 
@@ -46,80 +54,90 @@ const LoginPage = ({ mode = 'signin', onBack }) => {
       showOptionalFields: false,
     },
     variables: {
-      colorPrimary: '#000000',
-      colorText: '#000000',
-      colorTextSecondary: '#666666',
+      colorPrimary: D ? '#ffffff' : '#000000',
+      colorText: tc,
+      colorTextSecondary: sc,
       fontFamily: "'Montserrat', sans-serif",
+      colorBackground: D ? '#2a1a1a' : '#ffffff',
+      colorInputBackground: D ? '#2a1a1a' : '#fcfcfc',
+      colorInputText: tc
     },
     elements: {
       card: {
-        border: '1px solid rgba(0,0,0,0.08)',
-        boxShadow: '0 20px 40px -10px rgba(0,0,0,0.05)',
+        border: `1px solid ${bc}`,
+        boxShadow: D ? '0 20px 40px rgba(0,0,0,0.4)' : '0 20px 40px -10px rgba(0,0,0,0.05)',
         borderRadius: '1.5rem',
         padding: '2rem',
         width: '400px',
         maxWidth: '100%',
+        backgroundColor: D ? '#2a1a1a' : '#ffffff'
       },
       headerTitle: {
         fontWeight: 800,
         letterSpacing: '-1px',
         fontSize: '1.5rem',
+        color: tc
       },
       headerSubtitle: {
         fontWeight: 500,
         fontSize: '0.9rem',
+        color: sc
       },
       socialButtonsBlockButton: {
         borderRadius: '99px',
-        border: '1px solid #eee',
+        border: `1px solid ${bc}`,
         height: '44px',
-        backgroundColor: '#fff',
+        backgroundColor: D ? 'rgba(255,255,255,0.05)' : '#fff',
         '&:hover': {
-          borderColor: '#000',
-          backgroundColor: '#fafafa'
+          borderColor: tc,
+          backgroundColor: D ? 'rgba(255,255,255,0.1)' : '#fafafa'
         }
       },
       socialButtonsBlockButtonText: {
         fontWeight: 700,
         fontSize: '0.8rem',
-      },
-      socialButtonsBlockButtonArrow: {
-        display: 'none'
+        color: tc
       },
       formButtonPrimary: {
-        backgroundColor: '#000',
+        backgroundColor: tc,
+        color: bg,
         borderRadius: '99px',
         height: '48px',
         textTransform: 'uppercase',
         fontWeight: 800,
         letterSpacing: '1px',
         fontSize: '0.75rem',
-        marginTop: '0.5rem'
+        marginTop: '0.5rem',
+        '&:hover': {
+          backgroundColor: sc
+        }
       },
       formFieldInput: {
         borderRadius: '0.75rem',
-        border: '1px solid #f0f0f0',
-        backgroundColor: '#fcfcfc',
+        border: `1px solid ${bc}`,
+        backgroundColor: D ? 'rgba(0,0,0,0.2)' : '#fcfcfc',
         height: '42px',
         fontSize: '0.85rem',
-        fontFamily: "'Montserrat', sans-serif",
+        color: tc
       },
       formFieldLabel: {
         fontWeight: 700,
         fontSize: '0.8rem',
-        color: '#000',
+        color: tc,
       },
       footerActionLink: {
-        color: '#000',
+        color: tc,
         fontWeight: 800,
         textDecoration: 'underline'
       },
       dividerText: {
         fontWeight: 800,
         fontSize: '0.65rem',
-        color: '#ccc',
+        color: sc,
         textTransform: 'uppercase'
-      }
+      },
+      identityPreviewText: { color: tc },
+      identityPreviewEditButtonIcon: { color: tc }
     }
   };
 
@@ -130,6 +148,9 @@ const LoginPage = ({ mode = 'signin', onBack }) => {
           <Video size={24} />
           <span>smart<span style={{ fontWeight: 800 }}>Meet</span></span>
         </div>
+        <button onClick={onBack} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tc, display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 700, fontSize: '0.9rem' }}>
+          <ArrowLeft size={18} /> Back
+        </button>
       </nav>
 
       <main style={mainStyle}>
