@@ -4,10 +4,11 @@ const VEXA_BASE = 'https://api.cloud.vexa.ai';
 const VEXA_KEY = (process.env.VEXA_API_KEY || '').trim();
 const GROQ_KEY = (process.env.GROQ_API_KEY || '').trim();
 
-const vexaHeaders = {
+// Helper to get headers with fresh API key
+const getVexaHeaders = () => ({
     'Content-Type': 'application/json',
-    'X-API-Key': VEXA_KEY,
-};
+    'X-API-Key': (process.env.VEXA_API_KEY || '').trim(),
+});
 
 // POST /api/vexa/start
 export const startBot = async (req, res) => {
@@ -28,9 +29,9 @@ export const startBot = async (req, res) => {
 
         const r = await fetch(`${VEXA_BASE}/bots`, {
             method: 'POST',
-            headers: vexaHeaders,
+            headers: getVexaHeaders(),
             body: JSON.stringify({
-                platform: 'google_meet', // Recommended platform for generic bots if custom isn't supported
+                platform: 'web', // Generic web platform for custom apps
                 meeting_url: meetingUrl,
                 native_meeting_id: meetingId,
                 bot_name: 'SmartMeet AI',
@@ -40,8 +41,22 @@ export const startBot = async (req, res) => {
         const data = await r.json();
         if (!r.ok) {
             console.error('[VEXA] Bot Start Failed:', JSON.stringify(data, null, 2));
+
+            // Extract a readable error message from Vexa's potential error formats
+            let errMsg = 'Vexa start failed';
+            if (typeof data.detail === 'string') {
+                errMsg = data.detail;
+            } else if (Array.isArray(data.detail)) {
+                // Handle Pydantic validation errors: [{loc: [], msg: ""}]
+                errMsg = data.detail.map(d => `${d.loc?.join('.') || 'error'}: ${d.msg}`).join(' | ');
+            } else if (data.error) {
+                errMsg = data.error;
+            } else if (data.message) {
+                errMsg = data.message;
+            }
+
             return res.status(r.status).json({
-                error: data?.detail || data?.error || 'Vexa start failed',
+                error: errMsg,
                 raw: data
             });
         }
@@ -64,9 +79,9 @@ export const startBot = async (req, res) => {
 export const stopBot = async (req, res) => {
     try {
         const { meetingId } = req.params;
-        const r = await fetch(`${VEXA_BASE}/bots/google_meet/${meetingId}`, {
+        const r = await fetch(`${VEXA_BASE}/bots/web/${meetingId}`, {
             method: 'DELETE',
-            headers: vexaHeaders,
+            headers: getVexaHeaders(),
         });
         const data = r.status === 204 ? { success: true } : await r.json().catch(() => ({}));
         res.json({ success: true, data });
@@ -81,8 +96,8 @@ export const getTranscript = async (req, res) => {
         const hostId = req.auth.userId;
         const { meetingId } = req.params;
 
-        const r = await fetch(`${VEXA_BASE}/transcripts/google_meet/${meetingId}`, {
-            headers: vexaHeaders,
+        const r = await fetch(`${VEXA_BASE}/transcripts/web/${meetingId}`, {
+            headers: getVexaHeaders(),
         });
 
         if (!r.ok) {

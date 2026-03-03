@@ -51,6 +51,8 @@ app.get('/debug', (req, res) => res.json({
     env: {
         MONGODB_URI: !!process.env.MONGODB_URI,
         CLERK_SECRET_KEY: !!process.env.CLERK_SECRET_KEY,
+        VEXA_API_KEY: !!process.env.VEXA_API_KEY,
+        GROQ_API_KEY: !!process.env.GROQ_API_KEY,
         FRONTEND_URL: process.env.FRONTEND_URL || 'NOT SET',
         NODE_ENV: process.env.NODE_ENV || 'NOT SET',
     },

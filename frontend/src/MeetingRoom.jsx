@@ -438,8 +438,11 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     })
                 });
                 if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.error || 'Vexa start failed');
+                    const errData = await res.json().catch(() => ({}));
+                    console.error('Bot start error details:', errData);
+                    // Ensure we pass a string, not an object, to the Error constructor
+                    const msg = typeof errData.error === 'string' ? errData.error : (JSON.stringify(errData.error || errData) || 'Vexa start failed');
+                    throw new Error(msg);
                 }
                 const data = await res.json();
                 setBotRunning(true);
