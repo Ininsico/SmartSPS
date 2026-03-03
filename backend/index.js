@@ -14,17 +14,16 @@ import * as ctrl from './controllers/meetingController.js';
 const app = express();
 const httpServer = createServer(app);
 
-// FIXED CORS - DON'T use app.options('*')
+// Use a dynamic origin helper to support credentials with any origin
 app.use(cors({
-    origin: '*',
+    origin: (origin, callback) => callback(null, true),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token']
 }));
 
-// Handle OPTIONS requests properly
 app.options('*', (req, res) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Clerk-Auth-Token');
     res.header('Access-Control-Allow-Credentials', 'true');
@@ -38,12 +37,12 @@ mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ MongoDB connected'))
     .catch(err => console.log('❌ MongoDB error:', err));
 
-// Socket.io with CORS wide open
+// Socket.io with CORS mirroring
 const io = new Server(httpServer, {
     cors: {
-        origin: '*',
+        origin: (origin, callback) => callback(null, true),
         credentials: true,
-        methods: ['*']
+        methods: ['GET', 'POST']
     },
     path: '/socket.io'
 });
@@ -53,7 +52,7 @@ const COLLECTION_NAME = 'socket.io-adapter';
 const mongoClient = new MongoClient(process.env.MONGODB_URI);
 mongoClient.connect().then(() => {
     const db = mongoClient.db();
-    db.createCollection(COLLECTION_NAME, { capped: true, size: 1e6 }).catch(() => {});
+    db.createCollection(COLLECTION_NAME, { capped: true, size: 1e6 }).catch(() => { });
     const collection = db.collection(COLLECTION_NAME);
     io.adapter(createAdapter(collection));
     console.log('✅ Socket.io adapter ready');
@@ -66,7 +65,7 @@ app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 // Socket.io events
 io.on('connection', (socket) => {
     console.log('🔌 User connected:', socket.id);
-    
+
     socket.on('join-room', async ({ roomId, userId, userName, userAvatar }) => {
         try {
             roomId = roomId.toLowerCase();
@@ -74,34 +73,34 @@ io.on('connection', (socket) => {
             socket.userName = userName;
             socket.userAvatar = userAvatar;
             socket.roomId = roomId;
-            
+
             await socket.join(roomId);
-            
+
             const inviteUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}?room=${roomId}` : '';
-            
+
             const result = await ctrl.createOrJoinMeeting({
                 roomId, userId, userName, userAvatar,
                 socketId: socket.id, inviteUrl,
             });
-            
+
             if (!result) return;
-            
+
             const amHost = result.meeting.hostId === userId;
-            
+
             if (amHost && !result.meeting.hostSocketId) {
                 await ctrl.reassignHost({ roomId, newHostSocketId: socket.id, newHostUserId: userId });
             }
-            
+
             socket.emit('host-status', amHost);
             socket.emit('invite-url', inviteUrl);
-            
+
             const others = (result.meeting.participants || [])
                 .filter(p => p.isActive && p.socketId !== socket.id)
                 .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
-            
+
             socket.emit('all-users', others);
             socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
-            
+
         } catch (err) {
             console.log('❌ Join error:', err);
         }
@@ -158,16 +157,16 @@ io.on('connection', (socket) => {
 
                 const sockets = await io.in(roomId).fetchSockets();
                 const others = sockets.filter(s => s.id !== socket.id);
-                
+
                 if (others.length === 0) {
                     await ctrl.endMeeting(roomId);
                 } else {
                     const hostSocketId = await ctrl.getHostSocketId(roomId);
                     if (hostSocketId === socket.id) {
-                        await ctrl.reassignHost({ 
-                            roomId, 
-                            newHostSocketId: others[0].id, 
-                            newHostUserId: others[0].userId 
+                        await ctrl.reassignHost({
+                            roomId,
+                            newHostSocketId: others[0].id,
+                            newHostUserId: others[0].userId
                         });
                         io.to(others[0].id).emit('host-status', true);
                         io.to(roomId).emit('host-changed', { newHostSocketId: others[0].id });
@@ -181,6 +180,13 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+if (process.env.NODE_ENV !== 'production') {
+    httpServer.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+}
+
+// Vercel Bridging for Socket.io signalling
+app.all('/socket.io/(.*)', (req, res) => {
+    io.engine.handleRequest(req, res);
+});
 
 export default app;
