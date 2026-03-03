@@ -1,41 +1,35 @@
+import dotenv from 'dotenv';
+dotenv.config();
+
 import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { MongoClient } from 'mongodb';
 import { createAdapter } from '@socket.io/mongo-adapter';
 import meetingRoutes from './routes/meetingRoutes.js';
 import * as ctrl from './controllers/meetingController.js';
 
-dotenv.config();
-
 const app = express();
 const httpServer = createServer(app);
 
-const COLLECTION_NAME = 'socket_io_adapter';
+app.use(cors({
+    origin: ['https://smart-sps.vercel.app', 'http://localhost:5173', 'http://localhost:3000'],
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'X-Clerk-Auth-Token'],
+    exposedHeaders: ['Access-Control-Allow-Origin']
+}));
 
-const io = new Server(httpServer, {
-    cors: {
-        origin: (origin, callback) => callback(null, true),
-        methods: ['GET', 'POST'],
-        credentials: true
-    },
-    pingTimeout: 20000,
-    pingInterval: 5000,
-    transports: ['websocket', 'polling'], // Allow polling for Vercel fallback
-    perMessageDeflate: false,
-    connectTimeout: 30000
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.sendStatus(200);
 });
 
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow all origins
-        callback(null, true);
-    },
-    credentials: true
-}));
 app.use(express.json());
 
 let cachedMongoose = null;
@@ -79,7 +73,6 @@ io.use(async (socket, next) => {
     }
 });
 
-// Required handlers for Socket.io on Vercel signaling
 io.on('connection', (socket) => {
     socket.on('join-room', async ({ roomId: rawRoomId, userId, userName, userAvatar }) => {
         const roomId = rawRoomId.toLowerCase();
@@ -187,8 +180,6 @@ if (process.env.NODE_ENV !== 'production') {
     httpServer.listen(PORT, () => console.log(`SmartSPS Backend on :${PORT}`));
 }
 
-// Bridging for Vercel: use the internal Engine.io handleRequest
-// This is required because Vercel only uses the exported handler (app)
 app.all('/socket.io/*', (req, res) => {
     io.engine.handleRequest(req, res);
 });
