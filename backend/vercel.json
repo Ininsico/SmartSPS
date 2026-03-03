@@ -14,10 +14,9 @@
         {
             "src": "/(.*)",
             "headers": {
-                "Access-Control-Allow-Origin": "https://smart-sps.vercel.app",
+                "Access-Control-Allow-Origin": "*",
                 "Access-Control-Allow-Methods": "GET,POST,PUT,DELETE,OPTIONS",
-                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token",
-                "Access-Control-Allow-Credentials": "true"
+                "Access-Control-Allow-Headers": "Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token"
             },
             "dest": "index.js"
         }
