@@ -171,8 +171,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 const saved = await botFetch(`/saved/${roomId}`);
                 if (saved.ok) {
                     const data = await saved.json();
-                    setTranscript(data);
-                    if (data.summary) setSummary(data.summary);
+                    if (data.found) {
+                        setTranscript(data);
+                        if (data.summary) setSummary(data.summary);
+                    }
                 }
             } catch (e) { console.warn("Status check failed", e); }
         };

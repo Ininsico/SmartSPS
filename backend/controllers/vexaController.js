@@ -10,6 +10,13 @@ const getVexaHeaders = () => ({
     'X-API-Key': (process.env.VEXA_API_KEY || '').trim(),
 });
 
+// Vexa strictly enforces Google Meet ID format even for custom URLs
+const formatToVexaId = (id) => {
+    const clean = id.toLowerCase().replace(/[^a-z]/g, '');
+    const base = (clean + 'agvtpremiumai').substring(0, 10);
+    return `${base.substring(0, 3)}-${base.substring(3, 7)}-${base.substring(7, 10)}`;
+};
+
 // POST /api/vexa/start
 export const startBot = async (req, res) => {
     try {
@@ -25,15 +32,16 @@ export const startBot = async (req, res) => {
             console.warn(`[VEXA] Warning: Bots cannot join localhost URLs (${meetingUrl}). Use a public URL (e.g. via ngrok) for testing.`);
         }
 
-        console.log(`[VEXA] Starting bot for ${meetingId} | Platform: google_meet | URL: ${meetingUrl}`);
+        const vexaMeetingId = formatToVexaId(meetingId);
+        console.log(`[VEXA] Starting bot for ${meetingId} (VexaID: ${vexaMeetingId}) | URL: ${meetingUrl}`);
 
         const r = await fetch(`${VEXA_BASE}/bots`, {
             method: 'POST',
             headers: getVexaHeaders(),
             body: JSON.stringify({
-                platform: 'web', // Generic web platform for custom apps
+                platform: 'google_meet', // headles bots usually expect this
                 meeting_url: meetingUrl,
-                native_meeting_id: meetingId,
+                native_meeting_id: vexaMeetingId,
                 bot_name: 'SmartMeet AI',
             }),
         });
@@ -79,7 +87,8 @@ export const startBot = async (req, res) => {
 export const stopBot = async (req, res) => {
     try {
         const { meetingId } = req.params;
-        const r = await fetch(`${VEXA_BASE}/bots/web/${meetingId}`, {
+        const vexaMeetingId = formatToVexaId(meetingId);
+        const r = await fetch(`${VEXA_BASE}/bots/google_meet/${vexaMeetingId}`, {
             method: 'DELETE',
             headers: getVexaHeaders(),
         });
@@ -95,8 +104,9 @@ export const getTranscript = async (req, res) => {
     try {
         const hostId = req.auth.userId;
         const { meetingId } = req.params;
+        const vexaMeetingId = formatToVexaId(meetingId);
 
-        const r = await fetch(`${VEXA_BASE}/transcripts/web/${meetingId}`, {
+        const r = await fetch(`${VEXA_BASE}/transcripts/google_meet/${vexaMeetingId}`, {
             headers: getVexaHeaders(),
         });
 
@@ -138,8 +148,8 @@ export const getSavedTranscript = async (req, res) => {
     try {
         const { meetingId } = req.params;
         const doc = await Transcript.findOne({ meetingId }).lean();
-        if (!doc) return res.status(404).json({ error: 'No transcript saved yet' });
-        res.json(doc);
+        if (!doc) return res.json({ found: false, note: 'No transcript saved yet' });
+        res.json({ ...doc, found: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
