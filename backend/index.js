@@ -21,8 +21,6 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token']
 }));
 
-app.options('*', cors());
-
 app.use(express.json());
 
 mongoose.connect(process.env.MONGODB_URI)
@@ -46,8 +44,8 @@ mongoClient.connect().then(() => {
     db.createCollection(COLLECTION_NAME, { capped: true, size: 1e6 }).catch(() => { });
     const collection = db.collection(COLLECTION_NAME);
     io.adapter(createAdapter(collection));
-    console.log('✅ Socket.io adapter ready');
-}).catch(err => console.log('❌ Adapter error:', err));
+    console.log(' Socket.io adapter ready');
+}).catch(err => console.log(' Adapter error:', err));
 
 app.use('/api/meetings', meetingRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
@@ -91,7 +89,7 @@ io.on('connection', (socket) => {
             socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
 
         } catch (err) {
-            console.log('❌ Join error:', err);
+            console.log('Join error:', err);
         }
     });
 
@@ -129,7 +127,7 @@ io.on('connection', (socket) => {
                 io.to(targetSocketId).emit('force-muted', { byName: socket.userName });
             }
         } catch (err) {
-            console.log('❌ Admin mute error:', err);
+            console.log(' Admin mute error:', err);
         }
     });
 
@@ -163,10 +161,10 @@ io.on('connection', (socket) => {
                 }
             }
         } catch (err) {
-            console.log('❌ Disconnect error:', err);
+            console.log(' Disconnect error:', err);
         }
     });
 });
 
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, '0.0.0.0', () => console.log(`🚀 Server running on port ${PORT}`));
+httpServer.listen(PORT, '0.0.0.0', () => console.log(` Server running on port ${PORT}`));

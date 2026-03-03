@@ -4,7 +4,6 @@ import { motion } from 'framer-motion';
 import { Video } from 'lucide-react';
 
 const LoginPage = ({ mode = 'signin', onBack }) => {
-  // Inline styles for layout
   const containerStyle = {
     height: '100vh',
     width: '100vw',
@@ -36,8 +35,8 @@ const LoginPage = ({ mode = 'signin', onBack }) => {
   const mainStyle = {
     flex: 1,
     display: 'flex',
-    alignItems: 'center', // Center vertically
-    justifyContent: 'center', // Center horizontally
+    alignItems: 'center',
+    justifyContent: 'center',
     padding: '0.5rem'
   };
 
