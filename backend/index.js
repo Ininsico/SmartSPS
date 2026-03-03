@@ -14,121 +14,97 @@ import * as ctrl from './controllers/meetingController.js';
 const app = express();
 const httpServer = createServer(app);
 
-// GLOBAL CORS GUARD - Must be the FIRST thing the app does
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    // Echo the origin back to support credentials (which '*' doesn't allow)
-    res.header('Access-Control-Allow-Origin', origin || '*');
-    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token, X-Clerk-Instance-Id');
-    res.header('Access-Control-Allow-Credentials', 'true');
-    res.header('Access-Control-Max-Age', '86400'); // Cache for 24 hours
+// FIXED CORS - DON'T use app.options('*')
+app.use(cors({
+    origin: '*',
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token']
+}));
 
-    // Instant response for all Preflight (OPTIONS)
-    if (req.method === 'OPTIONS') {
-        return res.status(200).end();
-    }
-    next();
+// Handle OPTIONS requests properly
+app.options('*', (req, res) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Clerk-Auth-Token');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.sendStatus(200);
 });
 
 app.use(express.json());
 
 // MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
-    .then(() => console.log('MongoDB connected'))
-    .catch(err => console.log('MongoDB error:', err));
-
-const COLLECTION_NAME = 'socket_io_adapter';
+    .then(() => console.log('✅ MongoDB connected'))
+    .catch(err => console.log('❌ MongoDB error:', err));
 
 // Socket.io with CORS wide open
 const io = new Server(httpServer, {
     cors: {
-        origin: true, // This acts like '*' but allows Credentials
+        origin: '*',
         credentials: true,
-        methods: ['GET', 'POST']
+        methods: ['*']
     },
     path: '/socket.io'
 });
 
-let cachedClient = null;
-const getAdapter = async () => {
-    if (cachedClient) return cachedClient;
-    const client = new MongoClient(process.env.MONGODB_URI);
-    await client.connect();
-    const db = client.db();
-    try {
-        await db.createCollection(COLLECTION_NAME, { capped: true, size: 1e6 });
-    } catch (e) { }
+// MongoDB adapter for Socket.io
+const COLLECTION_NAME = 'socket.io-adapter';
+const mongoClient = new MongoClient(process.env.MONGODB_URI);
+mongoClient.connect().then(() => {
+    const db = mongoClient.db();
+    db.createCollection(COLLECTION_NAME, { capped: true, size: 1e6 }).catch(() => {});
     const collection = db.collection(COLLECTION_NAME);
-    const adapter = createAdapter(collection);
-    io.adapter(adapter);
-    cachedClient = adapter;
-    console.log('Socket.io Adapter Ready');
-    return adapter;
-};
-getAdapter().catch(console.error);
+    io.adapter(createAdapter(collection));
+    console.log('✅ Socket.io adapter ready');
+}).catch(err => console.log('❌ Adapter error:', err));
 
-app.use(['/api/meetings', '/meetings'], (req, res, next) => {
-    meetingRoutes(req, res, next);
-});
-app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
+// Routes
+app.use('/api/meetings', meetingRoutes);
+app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-// Catch unknown API requests to prevent silent 404s
-app.use('/api/*', (req, res) => {
-    console.warn(` 404 at API Path: ${req.originalUrl}`);
-    res.status(404).json({ error: 'API route not found', path: req.originalUrl });
-});
-
-// Middleware to ensure adapter is ready before any signals are processed
-io.use(async (socket, next) => {
-    try {
-        await getAdapter();
-        next();
-    } catch (err) {
-        console.error('Adapter Middleware Error:', err);
-        next();
-    }
-});
-
+// Socket.io events
 io.on('connection', (socket) => {
-    socket.on('join-room', async ({ roomId: rawRoomId, userId, userName, userAvatar }) => {
-        const roomId = rawRoomId.toLowerCase();
-        socket.userId = userId;
-        socket.userName = userName;
-        socket.userAvatar = userAvatar;
-        socket.roomId = roomId;
-        await socket.join(roomId);
-
-        const inviteUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}?room=${roomId}` : '';
-
-        const result = await ctrl.createOrJoinMeeting({
-            roomId, userId, userName, userAvatar,
-            socketId: socket.id, inviteUrl,
-        }).catch(err => {
-            console.error('Join Error:', err.message);
-            return null;
-        });
-
-        if (!result) return;
-        const { meeting } = result;
-
-        const amHost = meeting.hostId === userId;
-        const hId = meeting.hostSocketId || (amHost ? socket.id : null);
-
-        if (amHost && !meeting.hostSocketId) {
-            await ctrl.reassignHost({ roomId, newHostSocketId: socket.id, newHostUserId: userId });
+    console.log('🔌 User connected:', socket.id);
+    
+    socket.on('join-room', async ({ roomId, userId, userName, userAvatar }) => {
+        try {
+            roomId = roomId.toLowerCase();
+            socket.userId = userId;
+            socket.userName = userName;
+            socket.userAvatar = userAvatar;
+            socket.roomId = roomId;
+            
+            await socket.join(roomId);
+            
+            const inviteUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}?room=${roomId}` : '';
+            
+            const result = await ctrl.createOrJoinMeeting({
+                roomId, userId, userName, userAvatar,
+                socketId: socket.id, inviteUrl,
+            });
+            
+            if (!result) return;
+            
+            const amHost = result.meeting.hostId === userId;
+            
+            if (amHost && !result.meeting.hostSocketId) {
+                await ctrl.reassignHost({ roomId, newHostSocketId: socket.id, newHostUserId: userId });
+            }
+            
+            socket.emit('host-status', amHost);
+            socket.emit('invite-url', inviteUrl);
+            
+            const others = (result.meeting.participants || [])
+                .filter(p => p.isActive && p.socketId !== socket.id)
+                .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
+            
+            socket.emit('all-users', others);
+            socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
+            
+        } catch (err) {
+            console.log('❌ Join error:', err);
         }
-
-        socket.emit('host-status', amHost);
-        socket.emit('invite-url', inviteUrl);
-
-        const others = (meeting.participants || [])
-            .filter(p => p.isActive && p.socketId !== socket.id)
-            .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
-
-        console.log(`User ${userId} joined room ${roomId}. Others found: ${others.length}`);
-        socket.emit('all-users', others);
-        socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
     });
 
     socket.on('signal', ({ to, signal }) => {
@@ -159,9 +135,14 @@ io.on('connection', (socket) => {
     });
 
     socket.on('admin-mute', async ({ targetSocketId, roomId }) => {
-        const hostSocketId = await ctrl.getHostSocketId(roomId);
-        if (hostSocketId !== socket.id) return;
-        io.to(targetSocketId).emit('force-muted', { byName: socket.userName });
+        try {
+            const hostSocketId = await ctrl.getHostSocketId(roomId);
+            if (hostSocketId === socket.id) {
+                io.to(targetSocketId).emit('force-muted', { byName: socket.userName });
+            }
+        } catch (err) {
+            console.log('❌ Admin mute error:', err);
+        }
     });
 
     socket.on('state-change', ({ roomId, muted }) => {
@@ -169,36 +150,37 @@ io.on('connection', (socket) => {
     });
 
     socket.on('disconnecting', async () => {
-        const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-        for (const roomId of rooms) {
-            socket.broadcast.to(roomId).emit('user-left', socket.id);
-            await ctrl.participantLeft({ roomId, userId: socket.userId, socketId: socket.id }).catch(() => { });
+        try {
+            const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
+            for (const roomId of rooms) {
+                socket.broadcast.to(roomId).emit('user-left', socket.id);
+                await ctrl.participantLeft({ roomId, userId: socket.userId, socketId: socket.id });
 
-            const remaining = await io.in(roomId).fetchSockets();
-            const others = remaining.filter(s => s.id !== socket.id);
-            if (others.length === 0) {
-                await ctrl.endMeeting(roomId).catch(() => { });
-                continue;
+                const sockets = await io.in(roomId).fetchSockets();
+                const others = sockets.filter(s => s.id !== socket.id);
+                
+                if (others.length === 0) {
+                    await ctrl.endMeeting(roomId);
+                } else {
+                    const hostSocketId = await ctrl.getHostSocketId(roomId);
+                    if (hostSocketId === socket.id) {
+                        await ctrl.reassignHost({ 
+                            roomId, 
+                            newHostSocketId: others[0].id, 
+                            newHostUserId: others[0].userId 
+                        });
+                        io.to(others[0].id).emit('host-status', true);
+                        io.to(roomId).emit('host-changed', { newHostSocketId: others[0].id });
+                    }
+                }
             }
-
-            const hostSocketId = await ctrl.getHostSocketId(roomId);
-            if (hostSocketId === socket.id) {
-                const next = others[0];
-                await ctrl.reassignHost({ roomId, newHostSocketId: next.id, newHostUserId: next.userId });
-                io.to(next.id).emit('host-status', true);
-                io.to(roomId).emit('host-changed', { newHostSocketId: next.id });
-            }
+        } catch (err) {
+            console.log('❌ Disconnect error:', err);
         }
     });
 });
 
 const PORT = process.env.PORT || 5000;
-if (process.env.NODE_ENV !== 'production') {
-    httpServer.listen(PORT, () => console.log(`SmartSPS Backend on :${PORT}`));
-}
-
-app.all('/socket.io/*', (req, res) => {
-    io.engine.handleRequest(req, res);
-});
+httpServer.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 
 export default app;
