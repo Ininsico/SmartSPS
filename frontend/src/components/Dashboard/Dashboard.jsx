@@ -244,12 +244,37 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                     </div>
 
                     <div className="flex flex-col gap-6">
-                        <div>
-                            <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1.5 block">Title</label>
-                            <p className="m-0 text-xl font-black">{meeting.title}</p>
-                            <div className="flex gap-4 mt-2 text-[11px] font-bold opacity-40 uppercase tracking-tight">
-                                <span className="flex items-center gap-1.5 leading-none"><Calendar size={13} /> {new Date(meeting.createdAt).toLocaleDateString()}</span>
-                                <span className="flex items-center gap-1.5 leading-none"><Clock size={13} /> {new Date(meeting.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1.5 block">Title</label>
+                                <p className="m-0 text-xl font-black truncate">{meeting.title}</p>
+                            </div>
+                            <div className="text-right">
+                                <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1.5 block">Duration</label>
+                                <p className="m-0 text-xl font-black text-premium-accent">
+                                    {meeting.startTime && meeting.endTime
+                                        ? `${Math.round((new Date(meeting.endTime) - new Date(meeting.startTime)) / 60000)} MINS`
+                                        : 'IN PROGRESS'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-4 text-[11px] font-bold opacity-40 uppercase tracking-tight">
+                            <span className="flex items-center gap-1.5 leading-none"><Calendar size={13} /> {new Date(meeting.createdAt).toLocaleDateString()}</span>
+                            <span className="flex items-center gap-1.5 leading-none"><Clock size={13} /> {new Date(meeting.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        </div>
+
+                        {/* Participant List */}
+                        <div className="p-5 rounded-3xl border bg-black/5 border-black/5">
+                            <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-3 block">Participants ({meeting.participants?.length || 0})</label>
+                            <div className="flex flex-wrap gap-2">
+                                {meeting.participants?.map((p, i) => (
+                                    <div key={i} className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white border border-black/5 shadow-sm">
+                                        {p.avatar ? <img src={p.avatar} className="w-4 h-4 rounded-full" /> : <div className="w-4 h-4 rounded-full bg-gray-200" />}
+                                        <span className="text-[10px] font-bold">{p.name || 'Anonymous'}</span>
+                                    </div>
+                                ))}
+                                {(!meeting.participants || meeting.participants.length === 0) && <span className="text-xs opacity-30 italic">No one joined yet</span>}
                             </div>
                         </div>
 
@@ -262,14 +287,14 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                         ) : summary ? (
                             <div className={cn(
                                 "rounded-3xl border transition-all overflow-hidden",
-                                isDarkMode ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-100"
+                                isDarkMode ? "bg-white/5 border-white/10 text-white" : "bg-white border-gray-200 text-gray-900 shadow-sm"
                             )}>
                                 <button
                                     onClick={() => setShowSummary(!showSummary)}
                                     className="w-full p-5 flex items-center justify-between bg-transparent border-none cursor-pointer transition-colors"
                                 >
                                     <div className="flex items-center gap-3 font-bold text-sm tracking-tight">
-                                        <Sparkles size={18} />
+                                        <Sparkles size={18} className="text-premium-accent" />
                                         <span>AI MEETING SUMMARY</span>
                                     </div>
                                     {showSummary ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
@@ -281,22 +306,22 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                             initial={{ height: 0, opacity: 0 }}
                                             animate={{ height: 'auto', opacity: 1 }}
                                             exit={{ height: 0, opacity: 0 }}
-                                            className="overflow-hidden"
+                                            className="overflow-hidden bg-black/5 border-t border-black/5"
                                         >
-                                            <div className="p-5 pt-0 flex flex-col gap-6">
+                                            <div className="p-6 flex flex-col gap-8">
                                                 <div>
                                                     <label className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2 block">Executive Overview</label>
                                                     <p className="m-0 text-sm leading-relaxed opacity-80">{summary.overview}</p>
                                                 </div>
 
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div className="space-y-6">
                                                     {summary.keyPoints?.length > 0 && (
                                                         <div>
                                                             <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-3 block">Key Discussion Points</label>
                                                             <ul className="m-0 p-0 list-none space-y-2.5">
                                                                 {summary.keyPoints.map((p, i) => (
                                                                     <li key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug">
-                                                                        <span className="font-bold">•</span> {p}
+                                                                        <span className="font-bold text-premium-accent">•</span> {p}
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -304,10 +329,11 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                                     )}
                                                     {summary.actionItems?.length > 0 && (
                                                         <div>
+                                                            <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-3 block">Action Items</label>
                                                             <ul className="m-0 p-0 list-none space-y-2.5">
                                                                 {summary.actionItems.map((p, i) => (
-                                                                    <li key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug p-2 rounded-xl bg-black/5 border border-black/10">
-                                                                        <span className="font-bold text-black">❑</span> {p}
+                                                                    <li key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug p-3 rounded-xl bg-white border border-black/5 shadow-sm">
+                                                                        <span className="font-bold text-premium-accent">❑</span> {p}
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -317,11 +343,11 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
 
                                                 {summary.decisions?.length > 0 && (
                                                     <div>
-                                                        <label className="text-[10px] font-black uppercase tracking-widest text-black/60 mb-3 block">Key Decisions</label>
+                                                        <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-3 block text-premium-accent">Key Decisions</label>
                                                         <ul className="m-0 p-0 list-none grid grid-cols-1 md:grid-cols-2 gap-2">
                                                             {summary.decisions.map((p, i) => (
-                                                                <li key={i} className="text-xs font-bold p-3 rounded-xl bg-black/5 border border-black/10 flex gap-2.5 items-center">
-                                                                    <span className="font-bold text-black">✓</span> {p}
+                                                                <li key={i} className="text-xs font-bold p-3 rounded-xl bg-white border border-premium-accent/20 flex gap-2.5 items-center">
+                                                                    <span className="font-bold text-premium-accent">✓</span> {p}
                                                                 </li>
                                                             ))}
                                                         </ul>
@@ -332,17 +358,24 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                     )}
                                 </AnimatePresence>
                             </div>
-                        ) : null}
+                        ) : (
+                            <div className="p-8 text-center bg-black/5 rounded-3xl border border-dashed border-black/10">
+                                <p className="text-[10px] font-black opacity-30 uppercase tracking-widest">No AI notes generated for this session</p>
+                            </div>
+                        )}
 
                         <div className={cn(
                             "p-5 rounded-3xl border flex flex-col gap-1",
-                            isDarkMode ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
+                            isDarkMode ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200 shadow-sm"
                         )}>
                             <label className="text-[10px] font-black uppercase tracking-widest opacity-40">Meeting ID</label>
                             <div className="flex items-center gap-3">
                                 <code className="flex-1 text-base font-black tracking-widest text-premium-accent truncate">{meeting.roomId.toUpperCase()}</code>
                                 <button
-                                    onClick={() => navigator.clipboard.writeText(meeting.roomId)}
+                                    onClick={() => {
+                                        navigator.clipboard.writeText(meeting.roomId);
+                                        // Optional: add a toast here
+                                    }}
                                     className="p-2.5 rounded-xl bg-premium-accent/10 text-premium-accent hover:bg-premium-accent/20 transition-all border-none cursor-pointer"
                                 >
                                     <Clipboard size={16} />
@@ -390,18 +423,20 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
 
     const fetchHistory = async (showLoading = true) => {
         try {
-            if (CACHE_KEY) {
+            if (CACHE_KEY && showLoading) {
                 const cached = localStorage.getItem(CACHE_KEY);
                 if (cached) {
                     const { data, ts } = JSON.parse(cached);
-                    if (Date.now() - ts < CACHE_TTL && showLoading) {
+                    if (Date.now() - ts < CACHE_TTL) {
                         setMeetings(data);
                         setLoading(false);
+                        // Still fetch in background but don't show loading
                         fetchHistory(false);
                         return;
                     }
                 }
             }
+            if (showLoading) setLoading(true);
             const token = await getToken();
             const response = await fetch(`${import.meta.env.VITE_API_URL}/meetings/history`, {
                 headers: { Authorization: `Bearer ${token}` }
@@ -598,7 +633,16 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                         <>
                             <section className="flex flex-col gap-8">
                                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                                    <h1 className="text-4xl md:text-5xl font-black tracking-tight m-0">Meetings</h1>
+                                    <div className="flex items-center gap-4">
+                                        <h1 className="text-4xl md:text-5xl font-black tracking-tight m-0">Meetings</h1>
+                                        <button
+                                            onClick={() => fetchHistory(true)}
+                                            className="p-2 ml-2 rounded-lg hover:bg-black/5 transition-colors border-none bg-transparent cursor-pointer opacity-40 hover:opacity-100"
+                                            title="Sync History"
+                                        >
+                                            <Loader2 size={20} className={loading ? "animate-spin" : ""} />
+                                        </button>
+                                    </div>
 
                                     <div className="flex flex-wrap items-center gap-4">
                                         <div className="flex gap-2 p-1.5 rounded-2xl bg-white/5 border border-white/10">

@@ -3,7 +3,8 @@ import AgoraRTC from 'agora-rtc-sdk-ng';
 import AgoraRTM from 'agora-rtm-sdk';
 import {
     Mic, MicOff, Video as VideoIcon, VideoOff, ScreenShare,
-    MessageSquare, PhoneOff, Hand, X, Send, Circle, Loader2, Sparkles, Link2
+    MessageSquare, PhoneOff, Hand, X, Send, Circle, Loader2, Sparkles, Link2,
+    Heart, ThumbsUp, Smile, Frown, Flame, Rocket, CheckCircle2 as CheckCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserButton, useUser, useAuth } from '@clerk/clerk-react';
@@ -12,16 +13,31 @@ import { cn } from './utils';
 
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 
+const REACTIONS = [
+    { key: 'heart', icon: Heart, color: 'text-red-500' },
+    { key: 'thumbsup', icon: ThumbsUp, color: 'text-blue-500' },
+    { key: 'laugh', icon: Smile, color: 'text-yellow-500' },
+    { key: 'sad', icon: Frown, color: 'text-blue-400' },
+    { key: 'fire', icon: Flame, color: 'text-orange-500' },
+    { key: 'rocket', icon: Rocket, color: 'text-purple-500' },
+    { key: 'check', icon: CheckCircle, color: 'text-green-500' }
+];
+
+const reactionByKey = REACTIONS.reduce((acc, r) => ({ ...acc, [r.key]: r }), {});
+
 const FloatingReaction = ({ reactionKey, name, onDone }) => {
     useEffect(() => { const t = setTimeout(onDone, 3200); return () => clearTimeout(t); }, []);
     const r = reactionByKey[reactionKey];
     if (!r) return null;
+    const Icon = r.icon;
     return (
         <motion.div initial={{ opacity: 1, y: 0, scale: 0.5 }} animate={{ opacity: 0, y: -200, scale: 1.5 }} transition={{ duration: 3, ease: 'easeOut' }}
             className="fixed bottom-28 right-[40px] z-[900] pointer-events-none text-center"
             style={{ right: `${Math.random() * 200 + 40}px` }}
         >
-            <div className="text-[2.5rem] mb-1">{r.icon}</div>
+            <div className={cn("mb-1 p-3 rounded-full bg-black/40 backdrop-blur-sm shadow-2xl", r.color)}>
+                <Icon size={32} fill="currentColor" />
+            </div>
             <div className="text-[10px] text-white bg-black/60 rounded-md px-2 py-0.5 font-bold uppercase tracking-wider">{name}</div>
         </motion.div>
     );
@@ -247,7 +263,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     }
                 };
 
-                rtm.current.on('message', (ev) => {
+                rtm.current.on('message', async (ev) => {
                     if (!isMounted) return;
                     try {
                         const data = JSON.parse(ev.message);
@@ -258,6 +274,13 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         } else if (data.type === 'react') setReactions(p => [...p, { id: Date.now(), key: data.key, name: data.name }]);
                         else if (data.type === 'state') setPeerStates(p => ({ ...p, [ev.publisher]: data.state }));
                         else if (data.type === 'ping') broadcastProfile();
+                        else if (data.type === 'leave' && data.isHost) {
+                            // If host leaves, we might want to end the meeting session in DB
+                            // but usually we rely on the host explicitly clicking "End" if they want to.
+                        }
+                        else if (data.type === 'end_meeting') {
+                            onLeave();
+                        }
                         else if (data.type === 'force_mute' && data.target === String(numericUid)) {
                             setMicOn(false);
                             setAdminMuted(true);
@@ -300,6 +323,26 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     } catch (e) { console.warn('RTM fail (ignore if not enabled)', e); }
                 };
 
+                const notifyJoin = async () => {
+                    try {
+                        const token = await getToken();
+                        await fetch(`${import.meta.env.VITE_API_URL}/meetings/join`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                Authorization: `Bearer ${token}`,
+                                'x-session-id': sessionID
+                            },
+                            body: JSON.stringify({
+                                roomId,
+                                userName: user?.fullName,
+                                userAvatar: user?.imageUrl
+                            }),
+                        });
+                    } catch (e) { console.warn('Join notify failed', e); }
+                };
+
+                await notifyJoin();
                 joinRTC();
                 const timer = await joinRTM();
                 return () => timer && clearInterval(timer);
@@ -399,20 +442,30 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     };
 
     const tryFetchTranscript = async (attempt = 1) => {
-        const waitTime = attempt === 1 ? 40 : (attempt === 2 ? 30 : 20);
+        const waitTime = attempt === 1 ? 3 : (attempt === 2 ? 5 : 10);
         setBotPhase('fetching');
-        setPhaseMsg(`Synthesizing Notes (Attempt ${attempt}/3)…`);
+        setPhaseMsg(`Synthesizing Notes…`);
 
         startCountdown(waitTime, async () => {
             try {
                 const res = await botFetch(`/transcript/${roomId}`);
                 if (res.ok) {
                     const data = await res.json();
+                    if (!data.segments || data.segments.length === 0) {
+                        if (attempt < 6) {
+                            setPhaseMsg(`Transcript empty, retrying…`);
+                            await tryFetchTranscript(attempt + 1);
+                        } else {
+                            setBotPhase('error');
+                            setPhaseMsg('Meeting was too short for notes.');
+                        }
+                        return;
+                    }
                     setTranscript(data);
                     await runSummarize(data);
-                } else if (res.status === 422 && attempt < 3) {
-                    // 422 = Unprocessable Entity, often means Vexa is still processing the video
-                    setPhaseMsg(`Still processing (will retry in ${attempt === 1 ? 30 : 20}s)…`);
+                } else if ((res.status === 422 || res.status === 404 || res.status === 400) && attempt < 8) {
+                    // Vexa often takes a few seconds to "initialize" the transcript record
+                    setPhaseMsg(`Processing bits…`);
                     await tryFetchTranscript(attempt + 1);
                 } else {
                     const errData = await res.json().catch(() => ({}));
@@ -513,7 +566,18 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 audio: true,
             });
             recChunks.current = [];
-            mediaRecorder.current = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp9,opus' });
+
+            // Try different codecs for better browser compatibility
+            const codecs = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4'];
+            let selectedCodec = '';
+            for (const c of codecs) {
+                if (MediaRecorder.isTypeSupported(c)) {
+                    selectedCodec = c;
+                    break;
+                }
+            }
+
+            mediaRecorder.current = new MediaRecorder(stream, selectedCodec ? { mimeType: selectedCodec } : {});
             mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) recChunks.current.push(e.data); };
             mediaRecorder.current.onstop = () => {
                 stream.getTracks().forEach(t => t.stop());
@@ -594,6 +658,24 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     };
     const toggleVideo = () => { const n = !videoOn; setVideoOn(n); localTracks.current.video?.setEnabled(n); };
     const toggleHand = () => { const n = !handRaised; setHandRaised(n); syncState({ muted: !micOn, handRaised: n, adminMuted }); };
+
+    const handleLeave = async () => {
+        try {
+            if (isRecording) stopRecording();
+            if (botRunning) {
+                // Background fire-and-forget stop
+                botFetch(`/stop/${roomId}`, { method: 'DELETE' }).catch(() => { });
+            }
+            const token = await getToken();
+            await fetch(`${import.meta.env.VITE_API_URL}/meetings/end/${roomId}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (isHost) rtmPublish({ type: 'end_meeting' });
+            if (user?.id) localStorage.removeItem(`meeting_history_${user.id}`);
+        } catch (e) { }
+        onLeave();
+    };
 
     const forceMutePeer = (targetUid) => {
         if (!isHost) return;
@@ -928,11 +1010,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     </button>
 
                     <button
-                        onClick={() => {
-                            if (isRecording) stopRecording();
-                            if (user?.id) localStorage.removeItem(`meeting_history_${user.id}`);
-                            onLeave();
-                        }}
+                        onClick={handleLeave}
                         className="h-11 px-6 rounded-xl bg-black hover:bg-black/90 text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-90 border-none cursor-pointer flex items-center gap-2"
                     >
                         <PhoneOff size={16} />
@@ -1087,15 +1165,21 @@ const SelectionModal = ({ options, onSelect, onClose, isDark }) => (
                 isDark ? "bg-[#1a1010] border-white/10" : "bg-white border-black/5"
             )}
         >
-            {options.map(o => (
-                <button
-                    key={o.key}
-                    onClick={() => { onSelect(o.key); onClose(); }}
-                    className="aspect-square flex items-center justify-center text-4xl hover:scale-125 hover:rotate-6 active:scale-95 transition-all bg-transparent border-none cursor-pointer p-3"
-                >
-                    {o.icon}
-                </button>
-            ))}
+            {options.map(o => {
+                const Icon = o.icon;
+                return (
+                    <button
+                        key={o.key}
+                        onClick={() => { onSelect(o.key); onClose(); }}
+                        className={cn(
+                            "aspect-square flex items-center justify-center rounded-2xl hover:scale-110 active:scale-95 transition-all bg-black/5 hover:bg-black/10 border-none cursor-pointer p-4",
+                            o.color
+                        )}
+                    >
+                        <Icon size={32} fill="currentColor" />
+                    </button>
+                );
+            })}
         </motion.div>
     </motion.div>
 );

@@ -169,21 +169,15 @@ export const summarize = async (req, res) => {
             .map(s => `[${s.speaker}]: ${s.text}`)
             .join('\n');
 
-        const prompt = `You are a professional meeting summarizer. Analyze this meeting transcript and respond ONLY with valid JSON in exactly this format:
-
+        const prompt = `Summarize this meeting transcript as JSON. Output ONLY JSON.
+Format:
 {
-  "overview": "2-3 sentence summary of what this meeting was about",
-  "keyPoints": ["point 1", "point 2", "point 3"],
-  "actionItems": ["action 1", "action 2"],
-  "decisions": ["decision 1", "decision 2"]
+  "overview": "Concise summary",
+  "keyPoints": ["point 1", "..."],
+  "actionItems": ["task 1", "..."],
+  "decisions": ["decision 1", "..."]
 }
-
-Rules:
-- keyPoints: 3-7 most important discussion points
-- actionItems: concrete next steps assigned or implied (empty array if none)
-- decisions: formal decisions made (empty array if none)
-- Be specific and concise
-- Do NOT include any text outside the JSON
+Keep points brief.
 
 Meeting participants: ${participants.join(', ') || 'Unknown'}
 

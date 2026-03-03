@@ -62,6 +62,20 @@ export const scheduleMeeting = async (req, res) => {
     }
 };
 
+export const joinMeeting = async (req, res) => {
+    try {
+        const { roomId, userName, userAvatar, inviteUrl } = req.body;
+        const userId = req.auth.userId;
+        const socketId = req.headers['x-session-id'] || 'no-session';
+
+        const result = await createOrJoinMeeting({ roomId, userId, userName, userAvatar, socketId, inviteUrl });
+        res.json(result);
+    } catch (err) {
+        console.error('Join meeting failed:', err.message);
+        res.status(500).json({ error: 'Failed to join meeting' });
+    }
+};
+
 export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, inviteUrl }) => {
     const cached = getCachedRoom(roomId);
     if (cached) {
@@ -170,6 +184,16 @@ export const reassignHost = async ({ roomId, newHostSocketId, newHostUserId }) =
         { roomId },
         { $set: { hostId: newHostUserId, hostSocketId: newHostSocketId } }
     ).catch(() => { });
+};
+
+export const finishMeeting = async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        await endMeeting(roomId);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to end meeting' });
+    }
 };
 
 export const endMeeting = async (roomId) => {

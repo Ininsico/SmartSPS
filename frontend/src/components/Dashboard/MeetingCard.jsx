@@ -102,11 +102,28 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
         return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     };
 
+    const isLive = meeting.status === 'active';
+
     return (
         <div style={styles.card} onClick={onShowDetails}>
             <div style={styles.header}>
                 <div>
-                    <h3 style={styles.title}>{title}</h3>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <h3 style={styles.title}>{title}</h3>
+                        {isLive && (
+                            <div style={{
+                                backgroundColor: '#000',
+                                color: '#fff',
+                                fontSize: '8px',
+                                fontWeight: 900,
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                animation: 'pulse 2s infinite'
+                            }}>
+                                • LIVE
+                            </div>
+                        )}
+                    </div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                         <div style={styles.dateGroup}>
                             <Calendar size={12} />
