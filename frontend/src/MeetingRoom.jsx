@@ -191,6 +191,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     const peersRef = useRef([]);
     const mountedRef = useRef(false);
     const { user } = useUser();
+    const userRef = useRef(user);
+    useEffect(() => { userRef.current = user; }, [user]);
     const showToast = (msg, dur = 3000) => { setToast(msg); setTimeout(() => setToast(null), dur); };
     useEffect(() => { const id = setInterval(() => forceTime(t => t + 1), 30000); return () => clearInterval(id); }, []);
     useEffect(() => {
@@ -209,12 +211,23 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         const socketUrl = import.meta.env.VITE_SOCKET_URL || '';
         const socket = io(socketUrl, { transports: ['polling', 'websocket'], reconnectionAttempts: Infinity });
         socketRef.current = socket;
-        const join = () => { if (!user?.id) return; socket.emit('join-room', { roomId, userId: user.id, userName: user?.fullName || user?.username || 'Anonymous', userAvatar: user?.imageUrl }); };
+        const join = () => {
+            // Use a retry in case Clerk hasn't loaded user yet
+            const doJoin = (attempts = 0) => {
+                const u = userRef.current;
+                if (!u?.id) {
+                    if (attempts < 20) setTimeout(() => doJoin(attempts + 1), 300);
+                    return;
+                }
+                socket.emit('join-room', { roomId, userId: u.id, userName: u.fullName || u.username || 'Anonymous', userAvatar: u.imageUrl });
+            };
+            doJoin();
+        };
         socket.on('connect', join); socket.on('host-status', (amHost) => { setIsHost(amHost); if (amHost) setHostSocketId(socket.id); });
         socket.on('invite-url', (url) => setInviteUrl(url)); socket.on('host-changed', ({ newHostSocketId }) => { setHostSocketId(newHostSocketId); if (newHostSocketId === socket.id) { setIsHost(true); showToast('You are now the host 👑'); } });
         socket.on('all-users', (users) => { users.forEach(({ socketId, userId: uid, userName, userAvatar }) => { const peer = makePeer({ initiator: false, target: socketId, socket }); const obj = { socketId, userId: uid, userName, userAvatar, peer }; peersRef.current.push(obj); setPeers(prev => [...prev.filter(p => p.userId !== uid), obj]); }); });
         socket.on('peer-joined', ({ socketId, userId: uid, userName, userAvatar }) => { const peer = makePeer({ initiator: true, target: socketId, socket }); const obj = { socketId, userId: uid, userName, userAvatar, peer }; peersRef.current.push(obj); setPeers(prev => [...prev.filter(p => p.userId !== uid), obj]); });
-        socket.on('signal', ({ from, signal }) => { let item = peersRef.current.find(p => p.socketId === from); if (!item) { const peer = makePeer({ initiator: false, target: from, socket }); item = { socketId: from, userName: 'Connecting...', peer }; peersRef.current.push(item); setPeers(p => [...p, item]); } item.peer.signal(signal); });
+        socket.on('signal', ({ from, signal }) => { const item = peersRef.current.find(p => p.socketId === from); if (item) { item.peer.signal(signal); } });
         socket.on('user-left', (id) => { peersRef.current.find(p => p.socketId === id)?.peer?.destroy(); peersRef.current = peersRef.current.filter(p => p.socketId !== id); setPeers(prev => prev.filter(p => p.socketId !== id)); });
         socket.on('reaction', ({ from, userName, emoji }) => { if (from !== socket.id) setReactions(p => [...p, { id: Date.now(), emoji, name: userName }]); });
         socket.on('chat-message', (msg) => { if (msg.from !== socket.id) { setMessages(p => [...p, msg]); if (panel !== 'chat') setUnread(u => u + 1); } });
@@ -235,90 +248,229 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     const adminMute = (t, m) => socketRef.current?.emit(m ? 'admin-request-unmute' : 'admin-mute', { targetSocketId: t, roomId });
 
     const D = isDarkMode;
-    const bg = D ? '#1a0a0a' : '#f0f0f5', tc = D ? '#fff' : '#000', bd = D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', bb = D ? 'rgba(26,10,10,0.95)' : 'rgba(255,255,255,0.95)', mc = D ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
+    const bg = D ? '#050202' : '#f8f9fa', tc = D ? '#fff' : '#1a1a1a', bd = D ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)', bb = D ? 'rgba(10,5,5,0.98)' : 'rgba(255,255,255,0.98)', mc = D ? 'rgba(255,255,255,0.4)' : 'rgba(0,0,0,0.5)';
     const n = peers.length + 1;
+
     const gridStyle = () => {
-        let cols = 1; if (n > 1) cols = 2; if (n > 4) cols = 3; if (n > 9) cols = 4;
-        if (window.innerWidth < 768) cols = n > 2 ? 2 : 1;
-        return { display: 'grid', gridTemplateColumns: `repeat(${cols}, 1fr)`, gap: '1rem', width: '100%', maxWidth: 1400, margin: '0 auto' };
+        let cols = 1;
+        if (n > 1) cols = 2;
+        if (n > 4) cols = 3;
+        if (n > 9) cols = 4;
+        if (n > 16) cols = 5;
+
+        if (window.innerWidth < 768) {
+            cols = n > 2 ? 2 : 1;
+        }
+
+        return {
+            display: 'grid',
+            gridTemplateColumns: `repeat(${cols}, 1fr)`,
+            gap: '1.25rem',
+            width: '100%',
+            height: '100%',
+            maxWidth: '1600px',
+            margin: '0 auto',
+            alignContent: 'center',
+            justifyContent: 'center'
+        };
     };
 
     return (
         <div className="meeting-room-root">
             <header className="room-header">
                 <div className="header-left">
-                    <VideoIcon size={20} color="#e53e3e" />
-                    <span className="logo-txt" style={{ color: tc }}>smartMeet</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ background: '#e53e3e', padding: '6px', borderRadius: '8px' }}>
+                            <VideoIcon size={18} color="#fff" />
+                        </div>
+                        <span className="logo-txt" style={{ color: tc, fontWeight: 800, fontSize: '1.2rem', letterSpacing: '-0.5px' }}>smartMeet</span>
+                    </div>
+                    <div className="room-id-badge hide-mobile" style={{ background: bd, padding: '4px 12px', borderRadius: '99px', fontSize: '0.8rem', color: mc, fontWeight: 600, marginLeft: '1rem' }}>
+                        {roomId.toUpperCase()}
+                    </div>
                 </div>
                 <div className="header-right">
-                    <button className="invite-btn hide-mobile" onClick={() => setShowInvite(true)} style={{ color: tc }}><UserPlus size={16} /><span>Invite</span></button>
-                    <button className="theme-btn" onClick={() => setIsDarkMode(!D)} style={{ color: tc }}>{D ? <Sun size={16} /> : <Moon size={16} />}</button>
-                    <div className="p-count" style={{ color: mc }}><Users size={16} /><span>{n}</span></div>
+                    <button className="invite-btn hide-mobile" onClick={() => setShowInvite(true)} style={{ color: tc, background: bd, border: 'none', padding: '8px 16px', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700, transition: '0.2s' }}>
+                        <UserPlus size={16} />
+                        <span>Invite Team</span>
+                    </button>
+                    <button className="theme-btn" onClick={() => setIsDarkMode(!D)} style={{ background: 'none', border: 'none', color: tc, cursor: 'pointer', padding: '8px', borderRadius: '8px' }}>
+                        {D ? <Sun size={18} /> : <Moon size={18} />}
+                    </button>
+                    <div className="p-count hide-mobile" style={{ color: mc, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Users size={16} />
+                        <span style={{ fontWeight: 700 }}>{n}</span>
+                    </div>
                     <UserButton afterSignOutUrl="/" />
                 </div>
             </header>
-            <main className="room-main" style={{ paddingRight: (panel && window.innerWidth > 768) ? 320 : 0 }}>
-                <div style={gridStyle()}>
-                    <motion.div layout style={tileBase}>
-                        <video ref={localRef} autoPlay playsInline muted style={{ ...videoFill, transform: 'rotateY(180deg)' }} />
-                        <div style={gradOver} /><div className="tile-label">You {handRaised && '✋'}</div>
-                        {!videoOn && <div className="video-off-overlay">Avatar</div>}
-                    </motion.div>
-                    {peers.map(p => <RemoteTile key={p.socketId} peer={p.peer} name={p.userName} avatar={p.userAvatar} isDark={D} peerState={peerStates[p.socketId]} isHost={isHost} onAdminMute={adminMute} socketId={p.socketId} />)}
-                </div>
-            </main>
-            <footer className="room-footer">
-                <div className="footer-left hide-mobile" style={{ color: mc }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
-                <div className="footer-center">
-                    <button className={`ctrl-btn ${!micOn ? 'danger' : ''}`} onClick={toggleMic} style={{ color: !micOn ? '#fff' : tc }}>{micOn ? <Mic size={20} /> : <MicOff size={20} />}</button>
-                    <button className={`ctrl-btn ${!videoOn ? 'danger' : ''}`} onClick={toggleVideo} style={{ color: !videoOn ? '#fff' : tc }}>{videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}</button>
-                    <button className="ctrl-btn" onClick={toggleShare} style={{ color: tc }}><ScreenShare size={20} /></button>
-                    <button className={`ctrl-btn ${handRaised ? 'active' : ''}`} onClick={toggleHand} style={{ color: handRaised ? '#e53e3e' : tc }}><Hand size={20} /></button>
-                    <div className="btn-group">
-                        <button className="ctrl-btn" onClick={() => setShowReacts(!showReacts)}>😊</button>
-                        <button className={`ctrl-btn ${panel === 'chat' ? 'active' : ''}`} onClick={() => setPanel(panel === 'chat' ? null : 'chat')} style={{ color: tc }}><MessageSquare size={18} />{unread > 0 && <span className="badge">{unread}</span>}</button>
-                        <button className={`ctrl-btn ${panel === 'participants' ? 'active' : ''}`} onClick={() => setPanel(panel === 'participants' ? null : 'participants')} style={{ color: tc }}><Users size={18} /></button>
+
+            <div className="room-body">
+                <main className="room-main">
+                    <div style={gridStyle()}>
+                        <motion.div layout style={tileBase}>
+                            <video ref={localRef} autoPlay playsInline muted style={{ ...videoFill, transform: 'rotateY(180deg)' }} />
+                            <div style={gradOver} />
+                            <div className="tile-label" style={{ position: 'absolute', bottom: 12, left: 12, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(12px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '4px 10px', color: '#fff', fontSize: '0.76rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: 6 }}>
+                                {user?.imageUrl && <img src={user.imageUrl} alt="" style={{ width: 16, height: 16, borderRadius: '50%' }} />}
+                                You {handRaised && '✋'}
+                                {!videoOn && <VideoOff size={11} color="#fc8181" />}
+                                {!micOn && <MicOff size={11} color="#fc8181" />}
+                            </div>
+                            {!videoOn && (
+                                <div className="video-off-overlay" style={{ position: 'absolute', inset: 0, background: D ? '#1a1010' : '#e5e5ea', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <div style={{ width: 80, height: 80, borderRadius: '50%', background: D ? '#2a1a1a' : '#d0d0d8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1.8rem', fontWeight: 800, color: D ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)' }}>
+                                        {user?.imageUrl ? <img src={user.imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '50%' }} /> : user?.fullName?.[0] || '?'}
+                                    </div>
+                                </div>
+                            )}
+                        </motion.div>
+                        {peers.map(p => (
+                            <RemoteTile
+                                key={p.socketId}
+                                peer={p.peer}
+                                name={p.userName}
+                                avatar={p.userAvatar}
+                                isDark={D}
+                                peerState={peerStates[p.socketId]}
+                                isHost={isHost}
+                                onAdminMute={adminMute}
+                                socketId={p.socketId}
+                            />
+                        ))}
                     </div>
-                    <button className="ctrl-btn hangup" onClick={hangup}><PhoneOff size={20} /></button>
+                </main>
+
+                <AnimatePresence mode="popLayout">
+                    {panel && (
+                        <div className="panel-container">
+                            {panel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} onClose={() => setPanel(null)} user={user} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} />}
+                            {panel === 'participants' && <ParticipantsPanel peers={peers} peerStates={peerStates} user={user} isHost={isHost} hostSocketId={hostSocketId} mySocketId={socketRef.current?.id} onAdminMute={adminMute} onClose={() => setPanel(null)} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} myMuted={!micOn} myHand={handRaised} />}
+                        </div>
+                    )}
+                </AnimatePresence>
+            </div>
+
+            <footer className="room-footer">
+                <div className="footer-left hide-mobile" style={{ color: mc, fontWeight: 600, fontSize: '0.9rem' }}>
+                    {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} | <span style={{ color: tc }}>{roomId}</span>
                 </div>
-                <div className="footer-right hide-mobile"><button className="ctrl-btn" style={{ color: tc }}><Settings size={18} /></button></div>
+
+                <div className="footer-center">
+                    <button className={`ctrl-btn ${!micOn ? 'danger' : ''}`} onClick={toggleMic} style={{ color: !micOn ? '#fff' : tc }}>
+                        {micOn ? <Mic size={20} /> : <MicOff size={20} />}
+                    </button>
+                    <button className={`ctrl-btn ${!videoOn ? 'danger' : ''}`} onClick={toggleVideo} style={{ color: !videoOn ? '#fff' : tc }}>
+                        {videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}
+                    </button>
+                    <button className={`ctrl-btn ${isSharing ? 'active' : ''}`} onClick={toggleShare} style={{ color: isSharing ? '#e53e3e' : tc }}>
+                        <ScreenShare size={20} />
+                    </button>
+                    <button className={`ctrl-btn ${handRaised ? 'active' : ''}`} onClick={toggleHand} style={{ color: handRaised ? '#e53e3e' : tc }}>
+                        <Hand size={20} />
+                    </button>
+
+                    <div className="btn-divider" style={{ width: '1px', height: '24px', background: bd, margin: '0 8px' }} />
+
+                    <button className="ctrl-btn" onClick={() => setShowReacts(!showReacts)} style={{ fontSize: '1.2rem' }}>😊</button>
+                    <button className={`ctrl-btn ${panel === 'chat' ? 'active' : ''}`} onClick={() => setPanel(panel === 'chat' ? null : 'chat')} style={{ color: tc }}>
+                        <MessageSquare size={18} />
+                        {unread > 0 && <span className="badge">{unread}</span>}
+                    </button>
+                    <button className={`ctrl-btn ${panel === 'participants' ? 'active' : ''}`} onClick={() => setPanel(panel === 'participants' ? null : 'participants')} style={{ color: tc }}>
+                        <Users size={18} />
+                    </button>
+
+                    <button className="ctrl-btn hangup" onClick={hangup}>
+                        <PhoneOff size={22} />
+                    </button>
+                </div>
+
+                <div className="footer-right hide-mobile">
+                    <button className="ctrl-btn" style={{ color: tc }}>
+                        <Settings size={18} />
+                    </button>
+                </div>
             </footer>
+
             <AnimatePresence>
-                {panel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} onClose={() => setPanel(null)} user={user} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} />}
-                {panel === 'participants' && <ParticipantsPanel peers={peers} peerStates={peerStates} user={user} isHost={isHost} onAdminMute={adminMute} onClose={() => setPanel(null)} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} />}
+                {reactions.map(r => <FloatingReaction key={r.id} emoji={r.emoji} name={r.name} onDone={() => setReactions(p => p.filter(x => x.id !== r.id))} />)}
                 {showReacts && <ReactionPicker onPick={sendReaction} onClose={() => setShowReacts(false)} isDark={D} barBord={bd} />}
                 {showInvite && <InviteModal roomId={roomId} onClose={() => setShowInvite(false)} isDark={D} textCol={tc} barBord={bd} mutedCol={mc} />}
             </AnimatePresence>
+
             <style dangerouslySetInnerHTML={{
                 __html: `
-                .meeting-room-root { height: 100vh; display: flex; flex-direction: column; background: ${bg}; color: ${tc}; position: relative; overflow: hidden; }
-                .room-header { height: 60px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-bottom: 1px solid ${bd}; backdrop-filter: blur(10px); z-index: 100; }
-                .header-left, .header-right { display: flex; align-items: center; gap: 1rem; }
-                .room-main { flex: 1; padding: 1.5rem; display: flex; align-items: center; transition: padding 0.3s; overflow-y: auto; }
-                .room-footer { height: 80px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-top: 1px solid ${bd}; z-index: 100; }
-                .footer-center { display: flex; align-items: center; gap: 0.5rem; }
-                .ctrl-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid ${bd}; background: transparent; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; position: relative; }
-                .ctrl-btn:hover { background: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}; }
-                .ctrl-btn.active { background: rgba(229, 62, 62, 0.1); border-color: #e53e3e; }
-                .ctrl-btn.danger { background: #e53e3e; border-color: #e53e3e; }
-                .ctrl-btn.hangup { background: #e53e3e; color: #fff; width: 60px; border-color: #e53e3e; }
-                .room-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 320px; background: ${bb}; border-left: 1px solid ${bd}; z-index: 200; display: flex; flex-direction: column; box-shadow: -8px 0 32px rgba(0,0,0,0.2); }
-                .panel-header { padding: 1.25rem; border-bottom: 1px solid ${bd}; display: flex; justify-content: space-between; align-items: center; }
-                .panel-scroll { flex: 1; overflow-y: auto; padding: 1.25rem; }
-                .badge { position: absolute; top: -5px; right: -5px; background: #e53e3e; color: #fff; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 10px; border: 2px solid ${bb}; }
+                .meeting-room-root { height: 100vh; display: flex; flex-direction: column; background: ${bg}; color: ${tc}; position: relative; overflow: hidden; font-family: 'Montserrat', sans-serif; }
+                .room-header { height: 70px; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-bottom: 1px solid ${bd}; backdrop-filter: blur(20px); z-index: 1000; }
+                .room-body { flex: 1; display: flex; overflow: hidden; position: relative; }
+                .room-main { flex: 1; padding: 1.5rem; display: flex; flex-direction: column; overflow-y: auto; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+                .room-footer { height: 90px; padding: 0 2rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-top: 1px solid ${bd}; z-index: 1000; }
                 
-                @media (min-width: 769px) {
-                    .room-panel { top: 60px; bottom: 80px; }
-                }
+                .panel-container { width: 360px; height: 100%; border-left: 1px solid ${bd}; background: ${bb}; transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+                .room-panel { height: 100%; display: flex; flex-direction: column; width: 100%; }
+                
+                .header-left, .header-right { display: flex; align-items: center; gap: 1.25rem; }
+                .footer-center { display: flex; align-items: center; gap: 0.75rem; }
+                
+                .ctrl-btn { width: 48px; height: 48px; border-radius: 14px; border: 1px solid ${bd}; background: ${isDarkMode ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)'}; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: all 0.2s ease; position: relative; }
+                .ctrl-btn:hover { background: ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}; transform: translateY(-2px); }
+                .ctrl-btn.active { background: rgba(229, 62, 62, 0.12); border-color: rgba(229, 62, 62, 0.4); }
+                .ctrl-btn.danger { background: #e53e3e; border-color: #e53e3e; box-shadow: 0 4px 12px rgba(229, 62, 62, 0.3); }
+                .ctrl-btn.hangup { background: #e53e3e; color: #fff; width: 64px; border-color: #e53e3e; box-shadow: 0 4px 15px rgba(229, 62, 62, 0.4); margin-left: 0.5rem; }
+                .ctrl-btn.hangup:hover { transform: scale(1.05); background: #c53030; }
+
+                .badge { position: absolute; top: -4px; right: -4px; background: #e53e3e; color: #fff; font-size: 0.7rem; font-weight: 800; min-width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; border-radius: 50%; border: 2px solid ${bb}; }
+                
+                .panel-header { padding: 1.5rem; border-bottom: 1px solid ${bd}; display: flex; justify-content: space-between; align-items: center; }
+                .panel-title { font-weight: 800; font-size: 1.1rem; letter-spacing: -0.5px; }
+                .panel-scroll { flex: 1; overflow-y: auto; padding: 1.5rem; }
+                
+                .p-item { display: flex; align-items: center; gap: 12px; padding: 10px; borderRadius: 12px; margin-bottom: 8px; transition: 0.2s; }
+                .p-avatar-wrap { width: 40px; height: 40px; border-radius: 50%; overflow: hidden; background: ${bd}; }
+                .p-avatar-wrap img { width: 100%; height: 100%; object-fit: cover; }
+                .p-info { flex: 1; }
+                .p-name { font-weight: 700; font-size: 0.9rem; display: flex; align-items: center; gap: 6px; }
+                .you-label { font-size: 0.65rem; background: ${bd}; padding: 2px 6px; borderRadius: 4px; color: ${mc}; }
+                .p-mute-btn { background: none; border: none; padding: 8px; cursor: pointer; borderRadius: 8px; transition: 0.2s; }
+                .p-mute-btn:hover { background: ${bd}; }
+                
+                .chat-msg-wrap { margin-bottom: 1.25rem; display: flex; flex-direction: column; }
+                .chat-msg-wrap.me { align-items: flex-end; }
+                .chat-meta { font-size: 0.7rem; font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+                .chat-meta img { width: 14px; height: 14px; border-radius: 50%; }
+                .chat-bubble { padding: 10px 14px; border-radius: 14px; font-size: 0.9rem; line-height: 1.4; max-width: 85%; word-break: break-word; }
+                .chat-msg-wrap.me .chat-bubble { border-bottom-right-radius: 2px; }
+                .chat-msg-wrap.them .chat-bubble { border-bottom-left-radius: 2px; }
+                
+                .chat-input-wrap { padding: 1.25rem; display: flex; gap: 10px; }
+                .chat-input-wrap input { flex: 1; padding: 10px 15px; border-radius: 10px; border: none; font-size: 0.9rem; outline: none; }
+                .chat-input-wrap button { width: 38px; height: 38px; border-radius: 10px; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; color: #fff; transition: 0.2s; }
+
+                .react-picker { position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; padding: 12px; border-radius: 16px; box-shadow: 0 10px 30px rgba(0,0,0,0.3); z-index: 1100; }
+                .react-picker button { font-size: 1.5rem; background: none; border: none; cursor: pointer; transition: transform 0.2s; }
+                .react-picker button:hover { transform: scale(1.3); }
+
+                .invite-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); display: flex; alignItems: center; justifyContent: center; z-index: 2000; padding: 1rem; }
+                .invite-modal { width: 100%; maxWidth: 450px; padding: 2rem; border-radius: 24px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+                .invite-top { display: flex; justify-content: space-between; alignItems: flex-start; margin-bottom: 2rem; }
+                .invite-top h2 { font-weight: 800; letter-spacing: -1px; margin-bottom: 4px; }
+                .invite-group { margin-bottom: 1.5rem; }
+                .invite-group label { display: block; font-size: 0.75rem; font-weight: 800; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+                .invite-box { display: flex; alignItems: center; gap: 12px; padding: 12px 16px; border-radius: 12px; font-weight: 700; font-size: 0.95rem; }
+                .invite-box.code { font-size: 1.2rem; letter-spacing: 2px; }
+                .copy-btn { width: 100%; height: 50px; border-radius: 12px; border: none; color: #fff; font-weight: 800; cursor: pointer; display: flex; alignItems: center; justifyContent: center; gap: 8px; transition: 0.3s; }
 
                 @media (max-width: 768px) {
                     .hide-mobile { display: none; }
-                    .room-panel { width: 100%; z-index: 300; }
+                    .room-header { height: 60px; padding: 0 1rem; }
+                    .room-footer { height: 80px; padding: 0 0.5rem; }
+                    .room-body { flex-direction: column; }
+                    .panel-container { position: absolute; inset: 0; width: 100%; z-index: 1100; border-left: none; }
                     .room-main { padding: 0.75rem; }
-                    .footer-center { gap: 0.4rem; width: 100%; justify-content: space-around; }
+                    .footer-center { gap: 4px; width: 100%; justify-content: space-around; }
                     .ctrl-btn { width: 42px; height: 42px; border-radius: 10px; }
                     .ctrl-btn.hangup { width: 50px; }
-                    .btn-group { display: flex; gap: 0.4rem; }
                 }
             ` }} />
         </div>

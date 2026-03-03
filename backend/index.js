@@ -81,8 +81,14 @@ io.on('connection', (socket) => {
             socket.emit('host-status', amHost);
             socket.emit('invite-url', inviteUrl);
 
+            // Only include participants that have active socket connections RIGHT NOW
+            // to avoid sending stale socketIds from a previous session
+            const roomSockets = await io.in(roomId).fetchSockets();
+            const liveSocketIds = new Set(roomSockets.map(s => s.id));
+            liveSocketIds.delete(socket.id); // exclude self
+
             const others = (result.meeting.participants || [])
-                .filter(p => p.isActive && p.socketId !== socket.id)
+                .filter(p => p.isActive && p.socketId !== socket.id && liveSocketIds.has(p.socketId))
                 .map(p => ({ socketId: p.socketId, userId: p.userId, userName: p.name, userAvatar: p.avatar }));
 
             socket.emit('all-users', others);
@@ -106,7 +112,8 @@ io.on('connection', (socket) => {
     });
 
     socket.on('raise-hand', ({ roomId, raised }) => {
-        socket.broadcast.to(roomId).emit('peer-hand-raised', { socketId: socket.id, userName: socket.userName, raised });
+        // Emit as peer-state-change so the frontend's single handler processes everything
+        socket.broadcast.to(roomId).emit('peer-state-change', { socketId: socket.id, handRaised: raised });
     });
 
     socket.on('chat-message', ({ roomId, text }) => {

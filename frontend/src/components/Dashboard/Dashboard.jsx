@@ -203,8 +203,8 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
             <style dangerouslySetInnerHTML={{
                 __html: `
                 .dashboard-root { height: 100vh; width: 100vw; display: flex; background: ${isDarkMode ? darkMaroon : '#ffffff'}; color: ${isDarkMode ? '#fff' : '#000'}; overflow: hidden; }
-                .sidebar-container { height: 100%; z-index: 1001; transition: transform 0.3s ease; }
-                .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+                .sidebar-container { height: 100%; z-index: 1001; transition: transform 0.3s ease; flex-shrink: 0; }
+                .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
                 .scroll-area { flex: 1; overflow-y: auto; padding: 2.5rem 3.5rem; display: flex; flex-direction: column; gap: 2.5rem; }
                 .section-header { display: flex; justify-content: space-between; align-items: center; }
                 .title { font-size: 2.25rem; font-weight: 800; letter-spacing: -1.5px; margin: 0; }
@@ -214,8 +214,11 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                 .meetings-grid { display: grid; gap: 1.5rem; }
                 .meetings-grid.grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
                 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 400px; gap: 1rem; opacity: 0.4; }
+                @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+                .animate-spin { animation: spin 1s linear infinite; }
                 @media (max-width: 768px) {
-                    .sidebar-container { position: fixed; transform: translateX(-100%); left: 0; }
+                    .hide-mobile { display: none !important; }
+                    .sidebar-container { position: fixed; transform: translateX(-100%); left: 0; top: 0; }
                     .sidebar-container.open { transform: translateX(0); }
                     .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
                     .scroll-area { padding: 1.5rem 1rem; gap: 1.5rem; }

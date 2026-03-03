@@ -29,28 +29,30 @@ function App() {
     document.body.style.backgroundColor = isDarkMode ? '#1a0a0a' : '#ffffff';
   }, [isDarkMode]);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const roomFromUrl = params.get('room');
-    if (roomFromUrl) {
-      setRoomId(roomFromUrl.toLowerCase());
-    }
-  }, []);
-
+  // Single routing effect — URL params have highest priority
   useEffect(() => {
     if (!isLoaded) return;
     const params = new URLSearchParams(window.location.search);
     const roomFromUrl = params.get('room');
-    if (roomFromUrl && view !== 'meeting' && view !== 'preview') {
-      if (isSignedIn) {
-        setView('preview');
-      } else {
-        setView('login');
+
+    if (roomFromUrl) {
+      // Someone opened a meeting link — this always wins
+      const id = roomFromUrl.toLowerCase();
+      setRoomId(id);
+      if (view !== 'meeting' && view !== 'preview') {
+        if (isSignedIn) {
+          setView('preview');
+        } else {
+          setView('login');
+        }
       }
-    } else if (isSignedIn && (view === 'landing' || view === 'login')) {
-      setView('dashboard');
-    } else if (!isSignedIn && (view === 'dashboard' || view === 'meeting' || view === 'preview')) {
-      setView('landing');
+    } else {
+      // Normal app routing (no room in URL)
+      if (isSignedIn && (view === 'landing' || view === 'login')) {
+        setView('dashboard');
+      } else if (!isSignedIn && (view === 'dashboard' || view === 'meeting' || view === 'preview')) {
+        setView('landing');
+      }
     }
   }, [isSignedIn, isLoaded]);
 

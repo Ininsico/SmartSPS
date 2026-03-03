@@ -28,23 +28,36 @@ export const scheduleMeeting = async (req, res) => {
 
         res.status(201).json(meeting);
     } catch (err) {
-        res.status(500).json({ error: 'Failed to schedule meeting' });
+        console.error('Failed to schedule meeting:', err.message);
+        res.status(500).json({ error: 'Failed to schedule meeting', detail: err.message });
     }
 };
 
-export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, isHost, inviteUrl }) => {
+export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, inviteUrl }) => {
     let meeting = await Meeting.findOne({ roomId });
 
     if (!meeting) {
+        // Brand new room — this user becomes the host
         meeting = await Meeting.create({
             roomId,
             hostId: userId,
             hostSocketId: socketId,
             inviteUrl,
             title: `Meeting ${roomId.toUpperCase()}`,
+            status: 'active',
             participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true }],
         });
         return { meeting, isHost: true };
+    }
+
+    if (meeting.status === 'ended' || meeting.status === 'scheduled') {
+        meeting.status = 'active';
+        meeting.endTime = undefined;
+        const hasActiveHost = meeting.participants.some(p => p.userId === meeting.hostId && p.isActive);
+        if (!hasActiveHost) {
+            meeting.hostId = userId;
+            meeting.hostSocketId = socketId;
+        }
     }
 
     const existing = meeting.participants.find(p => p.userId === userId);
@@ -56,7 +69,8 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
         meeting.participants.push({ userId, socketId, name: userName, avatar: userAvatar, isActive: true });
     }
 
-    if (isHost && !meeting.hostSocketId) {
+    // Keep hostSocketId up to date if host is reconnecting
+    if (meeting.hostId === userId) {
         meeting.hostSocketId = socketId;
     }
 
