@@ -97,25 +97,25 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
             hostSocketId: newHostSocketId,
         });
 
-        Meeting.findOneAndUpdate(
+        const doc = await Meeting.findOneAndUpdate(
             { roomId },
             { $set: { status: needsActivate ? 'active' : cached.status, hostId: newHostId, hostSocketId: newHostSocketId, endTime: needsActivate ? null : undefined } },
-            { new: false }
-        ).then(doc => {
-            if (!doc) return;
+            { new: true }
+        );
+        if (doc) {
             const existingIdx = doc.participants.findIndex(p => p.userId === userId);
             if (existingIdx >= 0) {
-                Meeting.updateOne(
+                await Meeting.updateOne(
                     { roomId, 'participants.userId': userId },
                     { $set: { 'participants.$.socketId': socketId, 'participants.$.isActive': true, 'participants.$.leftAt': null } }
                 ).catch(() => { });
             } else {
-                Meeting.updateOne(
+                await Meeting.updateOne(
                     { roomId },
                     { $push: { participants: { userId, socketId, name: userName, avatar: userAvatar, isActive: true } } }
                 ).catch(() => { });
             }
-        }).catch(() => { });
+        }
 
         const mockMeeting = {
             hostId: newHostId,
@@ -199,10 +199,26 @@ export const finishMeeting = async (req, res) => {
 export const endMeeting = async (roomId) => {
     evictRoom(roomId);
     invalidateAllHistory();
-    Meeting.findOneAndUpdate(
+    await Meeting.findOneAndUpdate(
         { roomId },
         { $set: { status: 'ended', endTime: new Date() } }
     ).catch(() => { });
+};
+
+export const saveChatMessage = async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const { text, senderName, senderAvatar } = req.body;
+        const senderId = req.auth.userId;
+
+        await Meeting.updateOne(
+            { roomId },
+            { $push: { chat: { senderId, senderName, senderAvatar, text } } }
+        );
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to save message' });
+    }
 };
 
 export const getHostSocketId = async (roomId) => {

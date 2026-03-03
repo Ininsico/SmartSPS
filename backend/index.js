@@ -15,7 +15,7 @@ app.use(cors({
     origin: (origin, callback) => callback(null, true),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token']
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token', 'x-session-id']
 }));
 
 app.use(express.json({ limit: '50mb' }));

@@ -152,21 +152,21 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
 
             <div style={styles.participantsSection}>
                 <div style={styles.avatarStack}>
-                    {participants.slice(0, 3).map((p, idx) => (
+                    {(participants || []).slice(0, 3).map((p, idx) => (
                         <img
                             key={idx}
-                            src={p.avatar || 'https://via.placeholder.com/30'}
+                            src={p.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(p.name || 'U')}&background=random`}
                             alt={p.name}
                             style={{ ...styles.avatar, marginLeft: idx === 0 ? 0 : '-8px' }}
                             title={p.name}
                         />
                     ))}
-                    {participants.length > 3 && (
-                        <div style={{ ...styles.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.6rem', fontWeight: 800, color: '#888' }}>
-                            +{participants.length - 3}
+                    {(participants?.length || 0) > 3 && (
+                        <div style={{ ...styles.avatar, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px', fontWeight: 800, color: isDarkMode ? '#fff' : '#000', backgroundColor: isDarkMode ? '#222' : '#f0f0f0' }}>
+                            +{(participants.length - 3)}
                         </div>
                     )}
-                    <span style={styles.participantCount}>{participants.length} joined</span>
+                    <span style={styles.participantCount}>{participants?.length || 0} joined</span>
                 </div>
             </div>
 

@@ -252,9 +252,11 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                             <div className="text-right">
                                 <label className="text-[10px] font-black uppercase tracking-widest opacity-40 mb-1.5 block">Duration</label>
                                 <p className="m-0 text-xl font-black text-premium-accent">
-                                    {meeting.startTime && meeting.endTime
-                                        ? `${Math.round((new Date(meeting.endTime) - new Date(meeting.startTime)) / 60000)} MINS`
-                                        : 'IN PROGRESS'}
+                                    {(() => {
+                                        if (!meeting.startTime || !meeting.endTime) return 'IN PROGRESS';
+                                        const secs = Math.floor((new Date(meeting.endTime) - new Date(meeting.startTime)) / 1000);
+                                        return secs < 60 ? `${secs} SECS` : `${Math.round(secs / 60)} MINS`;
+                                    })()}
                                 </p>
                             </div>
                         </div>
@@ -358,9 +360,35 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                     )}
                                 </AnimatePresence>
                             </div>
-                        ) : (
-                            <div className="p-8 text-center bg-black/5 rounded-3xl border border-dashed border-black/10">
-                                <p className="text-[10px] font-black opacity-30 uppercase tracking-widest">No AI notes generated for this session</p>
+                        ) : null}
+
+                        {/* Chat History Section */}
+                        {summaryData?.chat?.length > 0 && (
+                            <div className={cn(
+                                "rounded-3xl border overflow-hidden",
+                                isDarkMode ? "bg-white/[0.02] border-white/5" : "bg-gray-50 border-gray-100"
+                            )}>
+                                <div className="p-4 border-b border-black/5 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <MessageSquare size={14} className="opacity-40" />
+                                        <label className="text-[10px] font-black uppercase tracking-widest opacity-40">Meeting Chat Log</label>
+                                    </div>
+                                    <span className="text-[10px] font-bold opacity-30">{summaryData.chat.length} messages</span>
+                                </div>
+                                <div className="p-4 max-h-[250px] overflow-y-auto scrollbar-none flex flex-col gap-4">
+                                    {summaryData.chat.map((c, i) => (
+                                        <div key={i} className="flex gap-3">
+                                            {c.senderAvatar ? <img src={c.senderAvatar} className="w-8 h-8 rounded-full shrink-0 border border-black/5 shadow-sm" /> : <div className="w-8 h-8 rounded-full bg-gray-200 shrink-0 flex items-center justify-center text-[10px] font-bold">{c.senderName?.[0] || '?'}</div>}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center justify-between mb-0.5">
+                                                    <span className="text-[10px] font-black">{c.senderName || 'Unknown'}</span>
+                                                    <span className="text-[9px] opacity-30">{new Date(c.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                                                </div>
+                                                <p className="m-0 text-xs opacity-80 leading-relaxed break-words">{c.text}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         )}
 

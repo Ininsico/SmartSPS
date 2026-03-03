@@ -229,6 +229,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         if (!APP_ID) return;
         let isMounted = true;
         const numericUid = Math.floor(Math.random() * 1000000);
+        window.__numericUid = numericUid; // For debugging
 
         const init = async () => {
             try {
@@ -274,20 +275,16 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         } else if (data.type === 'react') setReactions(p => [...p, { id: Date.now(), key: data.key, name: data.name }]);
                         else if (data.type === 'state') setPeerStates(p => ({ ...p, [ev.publisher]: data.state }));
                         else if (data.type === 'ping') broadcastProfile();
-                        else if (data.type === 'leave' && data.isHost) {
-                            // If host leaves, we might want to end the meeting session in DB
-                            // but usually we rely on the host explicitly clicking "End" if they want to.
-                        }
                         else if (data.type === 'end_meeting') {
                             onLeave();
                         }
-                        else if (data.type === 'force_mute' && data.target === String(numericUid)) {
+                        else if (data.type === 'force_mute' && String(data.target) === String(numericUid)) {
                             setMicOn(false);
                             setAdminMuted(true);
                             if (localTracks.current.audio) localTracks.current.audio.setEnabled(false);
                             syncState({ muted: true, handRaised, adminMuted: true });
                         }
-                        else if (data.type === 'force_unmute' && data.target === String(numericUid)) {
+                        else if (data.type === 'force_unmute' && String(data.target) === String(numericUid)) {
                             setAdminMuted(false);
                         }
                     } catch (e) { }
@@ -326,7 +323,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 const notifyJoin = async () => {
                     try {
                         const token = await getToken();
-                        await fetch(`${import.meta.env.VITE_API_URL}/meetings/join`, {
+                        const response = await fetch(`${import.meta.env.VITE_API_URL}/meetings/join`, {
                             method: 'POST',
                             headers: {
                                 'Content-Type': 'application/json',
@@ -339,6 +336,21 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                                 userAvatar: user?.imageUrl
                             }),
                         });
+                        const data = await response.json();
+                        if (data.isHost) {
+                            setIsHost(true);
+                            sessionStorage.setItem(`host_${roomId}`, 'true');
+                        }
+                        if (data.meeting?.chat) {
+                            setMessages(data.meeting.chat.map(m => ({
+                                id: m._id,
+                                from: m.senderId,
+                                userName: m.senderName,
+                                text: m.text,
+                                userAvatar: m.senderAvatar,
+                                timestamp: m.timestamp
+                            })));
+                        }
                     } catch (e) { console.warn('Join notify failed', e); }
                 };
 
@@ -368,10 +380,23 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         rtm.current.publish(roomId, JSON.stringify(payload)).catch(() => { });
     };
 
-    const sendMsg = (txt) => {
-        const msg = { type: 'chat', text: txt, name: user?.fullName || 'Me', pic: user?.imageUrl };
+    const sendMsg = async (txt) => {
+        if (!txt?.trim()) return;
+        const msg = { type: 'chat', text: txt, name: user?.fullName || 'Guest', pic: user?.imageUrl };
         rtmPublish(msg);
-        setMessages(p => [...p, { id: Date.now(), from: 'me', ...msg }]);
+        setMessages(p => [...p, { id: Date.now(), from: 'me', userName: msg.name, text: msg.text, userAvatar: msg.pic }]);
+
+        try {
+            const token = await getToken();
+            fetch(`${import.meta.env.VITE_API_URL}/meetings/chat/${roomId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ text: txt, senderName: msg.name, senderAvatar: msg.pic })
+            }).catch(() => { });
+        } catch (e) { }
     };
 
     const sendReact = (key) => {
@@ -442,89 +467,70 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     };
 
     const tryFetchTranscript = async (attempt = 1) => {
-        const waitTime = attempt === 1 ? 3 : (attempt === 2 ? 5 : 10);
+        const maxAttempts = 15;
+        const waitTime = 10; // seconds
         setBotPhase('fetching');
-        setPhaseMsg(`Synthesizing Notes…`);
 
-        startCountdown(waitTime, async () => {
-            try {
-                const res = await botFetch(`/transcript/${roomId}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (!data.segments || data.segments.length === 0) {
-                        if (attempt < 6) {
-                            setPhaseMsg(`Transcript empty, retrying…`);
-                            await tryFetchTranscript(attempt + 1);
-                        } else {
-                            setBotPhase('error');
-                            setPhaseMsg('Meeting was too short for notes.');
-                        }
-                        return;
-                    }
+        try {
+            setPhaseMsg(`AI Transcribing... (Attempt ${attempt}/${maxAttempts})`);
+            const res = await botFetch(`/transcript/${roomId}`);
+
+            if (res.ok) {
+                const data = await res.json();
+                if (data.segments?.length > 0) {
                     setTranscript(data);
+                    setBotPhase('summarizing');
                     await runSummarize(data);
-                } else if ((res.status === 422 || res.status === 404 || res.status === 400) && attempt < 8) {
-                    // Vexa often takes a few seconds to "initialize" the transcript record
-                    setPhaseMsg(`Processing bits…`);
-                    await tryFetchTranscript(attempt + 1);
-                } else {
-                    const errData = await res.json().catch(() => ({}));
-                    setBotPhase('error');
-                    setPhaseMsg(errData.error || 'Transcript not available.');
+                    setBotRunning(false);
+                    return;
                 }
-            } catch (err) {
-                setBotPhase('error');
-                setPhaseMsg('Connection error fetching notes.');
             }
-        });
+
+            // If still processing or not found yet, wait and retry
+            if (attempt < maxAttempts) {
+                startCountdown(waitTime, () => tryFetchTranscript(attempt + 1));
+            } else {
+                setBotPhase('error');
+                setPhaseMsg('Transcription taking longer than usual. Check back in the Dashboard later.');
+                setBotRunning(false);
+            }
+        } catch (err) {
+            console.error('Transcription check failed:', err);
+            if (attempt < maxAttempts) {
+                startCountdown(waitTime, () => tryFetchTranscript(attempt + 1));
+            }
+        }
     };
 
     const toggleBot = async () => {
-        if (['starting', 'stopping', 'fetching', 'summarizing'].includes(botPhase)) return;
-        if (!botRunning) {
-            setBotPhase('starting');
-            setPhaseMsg('Connecting SmartMeet AI…');
-            try {
-                const res = await botFetch('/start', {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        meetingId: roomId,
-                        origin: window.location.origin
-                    })
-                });
-                if (!res.ok) {
-                    const errData = await res.json().catch(() => ({}));
-                    console.error('Bot start error details:', errData);
-                    // Ensure we pass a string, not an object, to the Error constructor
-                    const msg = typeof errData.error === 'string' ? errData.error : (JSON.stringify(errData.error || errData) || 'Vexa start failed');
-                    throw new Error(msg);
-                }
-                const data = await res.json();
-                setBotRunning(true);
-                setBotPhase('running');
-                setPhaseMsg('SmartMeet AI is listening');
-            } catch (err) {
-                setBotPhase('error');
-                setPhaseMsg(err.message || 'Failed to start AI.');
-                console.error('Bot start error:', err);
-                setTimeout(() => { if (botPhase === 'error') setBotPhase('idle'); }, 4000);
-            }
-        } else {
-            setBotPhase('stopping');
-            setPhaseMsg('Stopping SmartMeet AI…');
-            try {
-                const res = await botFetch(`/stop/${roomId}`, { method: 'DELETE' });
-                if (!res.ok) {
-                    const err = await res.json().catch(() => ({}));
-                    throw new Error(err.error || 'Vexa stop failed');
-                }
-                setBotRunning(false);
-                await tryFetchTranscript(1);
-            } catch (err) {
-                setBotPhase('error');
-                setPhaseMsg(err.message || 'Failed to stop AI.');
-                console.error('Bot stop error:', err);
-            }
+        if (botPhase === 'summarizing' || botPhase === 'fetching') return;
+
+        // If we have a recording URL, we can start transcription
+        const lastRecUrl = localStorage.getItem(`last_rec_url_${roomId}`);
+        if (!lastRecUrl) {
+            setBotPhase('error');
+            setPhaseMsg('Start recording first to get AI notes.');
+            setTimeout(() => setBotPhase('idle'), 3000);
+            return;
+        }
+
+        setBotPhase('starting');
+        setPhaseMsg('Processing recording for AI notes…');
+        try {
+            const res = await botFetch('/start', {
+                method: 'POST',
+                body: JSON.stringify({ meetingId: roomId, recordingUrl: lastRecUrl })
+            });
+            if (!res.ok) throw new Error('Transcription failed to start');
+
+            setBotRunning(true);
+            setBotPhase('fetching');
+            setPhaseMsg('Transcribing meeting…');
+            await tryFetchTranscript(5); // Start polling
+        } catch (err) {
+            setBotPhase('error');
+            setPhaseMsg('Failed to process recording.');
+            setTimeout(() => setBotPhase('idle'), 3000);
         }
     };
 
@@ -565,6 +571,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 video: { mediaSource: 'screen', frameRate: 30 },
                 audio: true,
             });
+
+            if (stream.getAudioTracks().length === 0) {
+                alert("RECORDER WARNING: No audio track detected. To capture meeting audio, please ensure you check the 'Share system audio' box when choosing what to share.");
+            }
             recChunks.current = [];
 
             // Try different codecs for better browser compatibility
@@ -578,6 +588,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             }
 
             mediaRecorder.current = new MediaRecorder(stream, selectedCodec ? { mimeType: selectedCodec } : {});
+            window.__recordedMimeType = selectedCodec || mediaRecorder.current.mimeType;
+            console.log('--- Recording Started ---', { mimeType: window.__recordedMimeType });
             mediaRecorder.current.ondataavailable = (e) => { if (e.data.size > 0) recChunks.current.push(e.data); };
             mediaRecorder.current.onstop = () => {
                 stream.getTracks().forEach(t => t.stop());
@@ -606,7 +618,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         if (recChunks.current.length === 0) return;
         setUploading(true);
         try {
-            const blob = new Blob(recChunks.current, { type: 'video/webm' });
+            const blob = new Blob(recChunks.current, { type: window.__recordedMimeType || 'video/webm' });
             const title = `Meeting ${roomId.toUpperCase()} — ${new Date().toLocaleDateString()}`;
 
             // Step 1: Upload directly to Cloudinary (no backend involved, no 4.5MB limit)
@@ -640,8 +652,16 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             });
 
             if (user?.id) localStorage.removeItem(`recordings_${user.id}`);
+            localStorage.setItem(`last_rec_url_${roomId}`, cloud.secure_url);
+            console.log('--- Recording Upload Success ---', cloud.secure_url);
+
+            // Auto-trigger AI notes from this recording URL
+            setBotPhase('starting');
+            toggleBot();
         } catch (err) {
-            console.error('Upload failed:', err);
+            console.error('--- Recording Upload Failed ---', err);
+            setBotPhase('error');
+            setPhaseMsg('Recording saved but AI notes failed to start.');
         } finally {
             setUploading(false);
             recChunks.current = [];

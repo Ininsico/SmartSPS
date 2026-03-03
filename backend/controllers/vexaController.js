@@ -1,143 +1,97 @@
 import Transcript from '../models/Transcript.js';
+import Meeting from '../models/Meeting.js';
 
-const VEXA_BASE = 'https://api.cloud.vexa.ai';
-const VEXA_KEY = (process.env.VEXA_API_KEY || '').trim();
+const GLADIA_BASE = 'https://api.gladia.io/v2';
+const GLADIA_KEY = (process.env.GLADIA_API_KEY || '').trim();
 const GROQ_KEY = (process.env.GROQ_API_KEY || '').trim();
 
-// Helper to get headers with fresh API key
-const getVexaHeaders = () => ({
+const getGladiaHeaders = () => ({
     'Content-Type': 'application/json',
-    'X-API-Key': (process.env.VEXA_API_KEY || '').trim(),
+    'X-Gladia-Key': GLADIA_KEY,
 });
 
-// Vexa strictly enforces Google Meet ID format even for custom URLs
-const formatToVexaId = (id) => {
-    const clean = id.toLowerCase().replace(/[^a-z]/g, '');
-    const base = (clean + 'agvtpremiumai').substring(0, 10);
-    return `${base.substring(0, 3)}-${base.substring(3, 7)}-${base.substring(7, 10)}`;
-};
-
 // POST /api/vexa/start
+// We'll repurpose this to start Gladia if a recordingUrl is provided
 export const startBot = async (req, res) => {
     try {
-        const hostId = req.auth.userId;
-        const { meetingId, participants, origin } = req.body;
-        if (!meetingId) return res.status(400).json({ error: 'meetingId required' });
+        const { meetingId, recordingUrl } = req.body;
+        if (!recordingUrl) return res.status(400).json({ error: 'recordingUrl required for AI notes' });
 
-        const baseUrl = origin || process.env.FRONTEND_URL || 'https://smart-sps.vercel.app';
-        const botToken = VEXA_KEY.slice(-10);
-        const meetingUrl = `${baseUrl}/meeting/${meetingId}?bot_token=${botToken}`;
+        console.log(`[GLADIA] Starting transcription for ${meetingId} | URL: ${recordingUrl}`);
 
-        if (process.env.FRONTEND_URL?.includes('localhost')) {
-            console.warn(`[VEXA] Warning: Bots cannot join localhost URLs (${meetingUrl}). Use a public URL (e.g. via ngrok) for testing.`);
-        }
-
-        const vexaMeetingId = formatToVexaId(meetingId);
-        console.log(`[VEXA] Starting bot for ${meetingId} (VexaID: ${vexaMeetingId}) | URL: ${meetingUrl}`);
-
-        const r = await fetch(`${VEXA_BASE}/bots`, {
+        const r = await fetch(`${GLADIA_BASE}/transcription`, {
             method: 'POST',
-            headers: getVexaHeaders(),
+            headers: getGladiaHeaders(),
             body: JSON.stringify({
-                platform: 'google_meet', // headles bots usually expect this
-                meeting_url: meetingUrl,
-                native_meeting_id: vexaMeetingId,
-                bot_name: 'SmartMeet AI',
+                audio_url: recordingUrl,
+                diarization: true,
+                language_behavior: 'automatic',
             }),
         });
 
         const data = await r.json();
         if (!r.ok) {
-            console.error('[VEXA] Bot Start Failed:', JSON.stringify(data, null, 2));
-
-            // Extract a readable error message from Vexa's potential error formats
-            let errMsg = 'Vexa start failed';
-            if (typeof data.detail === 'string') {
-                errMsg = data.detail;
-            } else if (Array.isArray(data.detail)) {
-                // Handle Pydantic validation errors: [{loc: [], msg: ""}]
-                errMsg = data.detail.map(d => `${d.loc?.join('.') || 'error'}: ${d.msg}`).join(' | ');
-            } else if (data.error) {
-                errMsg = data.error;
-            } else if (data.message) {
-                errMsg = data.message;
-            }
-
-            return res.status(r.status).json({
-                error: errMsg,
-                raw: data
-            });
+            console.error('[GLADIA] Start Failed:', data);
+            return res.status(r.status).json({ error: data.message || 'Gladia start failed', raw: data });
         }
-
-        console.log(`[VEXA] Bot started successfully. ID: ${data.id || data.bot_id}`);
 
         await Transcript.findOneAndUpdate(
             { meetingId },
-            { meetingId, hostId, botId: data.id || data.bot_id || null, participants: participants || [], segments: [], rawJson: null },
+            { meetingId, status: 'processing', transcriptionId: data.id, audioUrl: recordingUrl },
             { upsert: true, new: true }
         );
 
-        res.json({ success: true, botId: data.id || data.bot_id, data });
+        res.json({ success: true, transcriptionId: data.id });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// DELETE /api/vexa/stop/:meetingId
+// DELETE /api/vexa/stop/:meetingId (Legacy/Placeholder)
 export const stopBot = async (req, res) => {
-    try {
-        const { meetingId } = req.params;
-        const vexaMeetingId = formatToVexaId(meetingId);
-        const r = await fetch(`${VEXA_BASE}/bots/google_meet/${vexaMeetingId}`, {
-            method: 'DELETE',
-            headers: getVexaHeaders(),
-        });
-        const data = r.status === 204 ? { success: true } : await r.json().catch(() => ({}));
-        res.json({ success: true, data });
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+    res.json({ success: true, note: 'Gladia handles processing automatically' });
 };
 
 // GET /api/vexa/transcript/:meetingId
 export const getTranscript = async (req, res) => {
     try {
-        const hostId = req.auth.userId;
         const { meetingId } = req.params;
-        const vexaMeetingId = formatToVexaId(meetingId);
+        const doc = await Transcript.findOne({ meetingId });
+        if (!doc || !doc.transcriptionId) return res.status(404).json({ error: 'No transcription found' });
 
-        const r = await fetch(`${VEXA_BASE}/transcripts/google_meet/${vexaMeetingId}`, {
-            headers: getVexaHeaders(),
-        });
-
-        if (!r.ok) {
-            const err = await r.json().catch(() => ({}));
-            console.error(`Vexa Transcript Error [${r.status}]:`, err);
-
-            // If Vexa returns 422, it usually means the bot is still processing or no data was captured.
-            // We'll return a cleaner message to the frontend.
-            const message = r.status === 422 ? 'Transcript processing - please wait a moment' : (err?.detail || 'Transcript not ready');
-            return res.status(r.status).json({ error: message, raw: err });
+        if (doc.status === 'completed' && doc.segments?.length > 0) {
+            return res.json({ meetingId, participants: doc.participants, segments: doc.segments });
         }
 
-        const raw = await r.json();
+        const r = await fetch(`${GLADIA_BASE}/transcription/${doc.transcriptionId}`, {
+            headers: getGladiaHeaders(),
+        });
 
-        const segments = (raw.transcript || raw.segments || raw.utterances || []).map(seg => ({
-            speaker: seg.speaker || seg.channel || 'Unknown',
-            text: seg.text || seg.content || '',
-            startTime: seg.start_time ?? seg.start ?? 0,
-            endTime: seg.end_time ?? seg.end ?? 0,
-        }));
+        const data = await r.json();
+        if (!r.ok) return res.status(r.status).json(data);
 
-        const participants = [...new Set(segments.map(s => s.speaker))];
+        if (data.status === 'done') {
+            const transcriptData = data.transcription;
+            const utterances = transcriptData.utterances || [];
 
-        await Transcript.findOneAndUpdate(
-            { meetingId },
-            { meetingId, hostId, segments, participants, rawJson: raw },
-            { upsert: true, new: true }
-        );
+            const segments = utterances.map(u => ({
+                speaker: `Speaker ${u.speaker ?? '?'}`,
+                text: u.content || '',
+                startTime: u.start || 0,
+                endTime: u.end || 0,
+            }));
 
-        res.json({ meetingId, participants, segments, raw });
+            const participants = [...new Set(segments.map(s => s.speaker))];
+
+            await Transcript.findOneAndUpdate(
+                { meetingId },
+                { status: 'completed', segments, participants, rawJson: data }
+            );
+
+            return res.json({ meetingId, participants, segments });
+        }
+
+        res.status(202).json({ status: data.status, message: 'Transcription in progress...' });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
@@ -148,23 +102,22 @@ export const getSavedTranscript = async (req, res) => {
     try {
         const { meetingId } = req.params;
         const doc = await Transcript.findOne({ meetingId }).lean();
-        if (!doc) return res.json({ found: false, note: 'No transcript saved yet' });
-        res.json({ ...doc, found: true });
+        const meeting = await Meeting.findOne({ roomId: meetingId }).select('chat').lean();
+
+        if (!doc && !meeting) return res.json({ found: false, note: 'No data saved yet' });
+        res.json({ ...doc, chat: meeting?.chat || [], found: true });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
 // POST /api/vexa/summarize
-// Body: { meetingId, segments, participants }
-// Calls Groq llama-3.1-8b-instant, parses structured summary, saves to DB
 export const summarize = async (req, res) => {
     try {
         const { meetingId, segments = [], participants = [] } = req.body;
         if (!meetingId) return res.status(400).json({ error: 'meetingId required' });
         if (segments.length === 0) return res.status(400).json({ error: 'No transcript segments to summarize' });
 
-        // Build readable transcript text
         const transcriptText = segments
             .map(s => `[${s.speaker}]: ${s.text}`)
             .join('\n');
@@ -182,7 +135,7 @@ Keep points brief.
 Meeting participants: ${participants.join(', ') || 'Unknown'}
 
 Transcript:
-${transcriptText.slice(0, 12000)}`; // Groq 8k context safe limit
+${transcriptText.slice(0, 12000)}`;
 
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
@@ -200,20 +153,17 @@ ${transcriptText.slice(0, 12000)}`; // Groq 8k context safe limit
 
         if (!groqRes.ok) {
             const errBody = await groqRes.json().catch(() => ({}));
-            console.error('Groq API Error:', errBody);
             return res.status(groqRes.status).json({ error: 'AI Summarization failed', raw: errBody });
         }
 
         const groqData = await groqRes.json();
         const rawText = groqData.choices?.[0]?.message?.content || '';
 
-        // Parse JSON from Groq response (strip any markdown fences)
         let parsed;
         try {
             const clean = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
             parsed = JSON.parse(clean);
         } catch {
-            // Fallback — return raw text as overview
             parsed = { overview: rawText, keyPoints: [], actionItems: [], decisions: [] };
         }
 
@@ -226,7 +176,6 @@ ${transcriptText.slice(0, 12000)}`; // Groq 8k context safe limit
             generatedAt: new Date(),
         };
 
-        // Persist to DB
         await Transcript.findOneAndUpdate(
             { meetingId },
             { $set: { summary: summaryDoc } },
@@ -243,7 +192,7 @@ ${transcriptText.slice(0, 12000)}`; // Groq 8k context safe limit
 export const getStatus = async (req, res) => {
     try {
         const doc = await Transcript.findOne({ meetingId: req.params.meetingId });
-        res.json({ running: !!(doc && doc.botId) });
+        res.json({ running: !!(doc && doc.status === 'processing') });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

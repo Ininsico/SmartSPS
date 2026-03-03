@@ -21,6 +21,13 @@ const meetingSchema = new mongoose.Schema({
     startTime: { type: Date, default: Date.now },
     scheduleTime: { type: Date },
     endTime: { type: Date },
+    chat: [{
+        senderId: { type: String, required: true },
+        senderName: { type: String },
+        senderAvatar: { type: String },
+        text: { type: String, required: true },
+        timestamp: { type: Date, default: Date.now },
+    }],
 }, { timestamps: true });
 
 const Meeting = mongoose.model('Meeting', meetingSchema);
