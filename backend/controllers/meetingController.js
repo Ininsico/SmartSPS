@@ -1,11 +1,26 @@
 import Meeting from '../models/Meeting.js';
+import {
+    getCachedRoom, setCachedRoom, patchCachedRoom, patchCachedParticipant,
+    evictRoom, getCachedHistory, setCachedHistory, invalidateHistory, invalidateAllHistory,
+    recordHit, recordMiss,
+} from '../cache.js';
 
 export const getMeetingHistory = async (req, res) => {
     try {
         const userId = req.auth.userId;
+
+        const cached = getCachedHistory(userId);
+        if (cached) { recordHit(); return res.json(cached); }
+
+        recordMiss();
         const meetings = await Meeting.find({
             $or: [{ hostId: userId }, { 'participants.userId': userId }]
-        }).sort({ createdAt: -1 }).lean();
+        })
+            .sort({ createdAt: -1 })
+            .select('roomId hostId title status scheduleTime startTime endTime participants createdAt')
+            .lean();
+
+        setCachedHistory(userId, meetings);
         res.json(meetings);
     } catch {
         res.status(500).json({ error: 'Failed to fetch meeting history' });
@@ -23,8 +38,10 @@ export const scheduleMeeting = async (req, res) => {
             title,
             scheduleTime: new Date(scheduleTime),
             status: 'scheduled',
-            participants: []
+            participants: [],
         });
+        setCachedRoom(meeting);
+        invalidateHistory(hostId);
 
         res.status(201).json(meeting);
     } catch (err) {
@@ -34,10 +51,72 @@ export const scheduleMeeting = async (req, res) => {
 };
 
 export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, inviteUrl }) => {
+   
+    const cached = getCachedRoom(roomId);
+    if (cached) {
+        recordHit();
+        const isHost = cached.hostId === userId;
+
+        const needsActivate = cached.status === 'ended' || cached.status === 'scheduled';
+        const hasActiveHost = [...cached.participants.values()].some(p => p.isActive && cached.hostId === userId);
+
+        let newHostId = cached.hostId;
+        let newHostSocketId = cached.hostSocketId;
+
+        if (needsActivate && !hasActiveHost) {
+            newHostId = userId;
+            newHostSocketId = socketId;
+        }
+        if (isHost) newHostSocketId = socketId;
+
+        patchCachedParticipant(roomId, userId, { socketId, name: userName, avatar: userAvatar, isActive: true });
+        patchCachedRoom(roomId, {
+            status: needsActivate ? 'active' : cached.status,
+            hostId: newHostId,
+            hostSocketId: newHostSocketId,
+        });
+
+        Meeting.findOneAndUpdate(
+            { roomId },
+            {
+                $set: {
+                    status: needsActivate ? 'active' : cached.status,
+                    hostId: newHostId,
+                    hostSocketId: newHostSocketId,
+                    endTime: needsActivate ? null : undefined,
+                },
+            },
+            { new: false }
+        ).then(doc => {
+            if (!doc) return;
+            const existingIdx = doc.participants.findIndex(p => p.userId === userId);
+            if (existingIdx >= 0) {
+                Meeting.updateOne(
+                    { roomId, 'participants.userId': userId },
+                    { $set: { 'participants.$.socketId': socketId, 'participants.$.isActive': true, 'participants.$.leftAt': null } }
+                ).catch(() => { });
+            } else {
+                Meeting.updateOne(
+                    { roomId },
+                    { $push: { participants: { userId, socketId, name: userName, avatar: userAvatar, isActive: true } } }
+                ).catch(() => { });
+            }
+        }).catch(() => { });
+
+        const mockMeeting = {
+            hostId: newHostId,
+            hostSocketId: newHostSocketId,
+            status: needsActivate ? 'active' : cached.status,
+            participants: [...cached.participants.entries()].map(([uid, p]) => ({
+                userId: uid, socketId: p.socketId, name: p.name, avatar: p.avatar, isActive: p.isActive,
+            })),
+        };
+        return { meeting: mockMeeting, isHost: newHostId === userId };
+    }
+    recordMiss();
     let meeting = await Meeting.findOne({ roomId });
 
     if (!meeting) {
-        // Brand new room — this user becomes the host
         meeting = await Meeting.create({
             roomId,
             hostId: userId,
@@ -47,10 +126,12 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
             status: 'active',
             participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true }],
         });
+        setCachedRoom(meeting);
+        invalidateAllHistory();
         return { meeting, isHost: true };
     }
-
-    if (meeting.status === 'ended' || meeting.status === 'scheduled') {
+    const needsActivate = meeting.status === 'ended' || meeting.status === 'scheduled';
+    if (needsActivate) {
         meeting.status = 'active';
         meeting.endTime = undefined;
         const hasActiveHost = meeting.participants.some(p => p.userId === meeting.hostId && p.isActive);
@@ -69,35 +150,48 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
         meeting.participants.push({ userId, socketId, name: userName, avatar: userAvatar, isActive: true });
     }
 
-    // Keep hostSocketId up to date if host is reconnecting
-    if (meeting.hostId === userId) {
-        meeting.hostSocketId = socketId;
-    }
+    if (meeting.hostId === userId) meeting.hostSocketId = socketId;
 
     await meeting.save();
+    setCachedRoom(meeting);   // hydrate cache for subsequent joins
     return { meeting, isHost: meeting.hostId === userId };
 };
 
 export const participantLeft = async ({ roomId, userId, socketId }) => {
-    await Meeting.updateOne(
+    patchCachedParticipant(roomId, userId, { isActive: false, socketId: null });
+    Meeting.updateOne(
         { roomId, 'participants.socketId': socketId },
         { $set: { 'participants.$.isActive': false, 'participants.$.leftAt': new Date() } }
-    );
+    ).catch(() => { });
 };
 
 export const reassignHost = async ({ roomId, newHostSocketId, newHostUserId }) => {
-    await Meeting.updateOne({ roomId }, { $set: { hostId: newHostUserId, hostSocketId: newHostSocketId } });
+    patchCachedRoom(roomId, { hostId: newHostUserId, hostSocketId: newHostSocketId });
+
+    Meeting.updateOne(
+        { roomId },
+        { $set: { hostId: newHostUserId, hostSocketId: newHostSocketId } }
+    ).catch(() => { });
 };
 
 export const endMeeting = async (roomId) => {
-    await Meeting.findOneAndUpdate(
+    evictRoom(roomId);
+    invalidateAllHistory();
+
+    Meeting.findOneAndUpdate(
         { roomId },
         { $set: { status: 'ended', endTime: new Date() } }
-    );
+    ).catch(() => { });
 };
 
 export const getHostSocketId = async (roomId) => {
-    const m = await Meeting.findOne({ roomId }, 'hostSocketId').lean();
+    const cached = getCachedRoom(roomId);
+    if (cached) { recordHit(); return cached.hostSocketId ?? null; }
+
+    recordMiss();
+    const m = await Meeting.findOne({ roomId }, 'hostSocketId hostId participants').lean();
+    if (m) setCachedRoom(m);
     return m?.hostSocketId ?? null;
 };
+
 export { Meeting };

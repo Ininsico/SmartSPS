@@ -134,18 +134,52 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
     const { user } = useUser();
     const darkMaroon = '#1a0a0a';
 
-    const fetchHistory = async () => {
+    const CACHE_KEY = user ? `meeting_history_${user.id}` : null;
+    const CACHE_TTL = 60_000; // 60s — matches server cache
+
+    const fetchHistory = async (showLoading = true) => {
         try {
+            // Serve stale cache instantly while re-fetching
+            if (CACHE_KEY) {
+                const cached = localStorage.getItem(CACHE_KEY);
+                if (cached) {
+                    const { data, ts } = JSON.parse(cached);
+                    if (Date.now() - ts < CACHE_TTL && showLoading) {
+                        setMeetings(data);
+                        setLoading(false);
+                        // Still refresh in background (stale-while-revalidate)
+                        fetchHistory(false);
+                        return;
+                    }
+                }
+            }
+
             const token = await getToken();
             const response = await fetch(`${import.meta.env.VITE_API_URL}/meetings/history`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             const data = await response.json();
-            setMeetings(Array.isArray(data) ? data : []);
-        } catch (err) { console.error('Failed to fetch history:', err); } finally { setLoading(false); }
+            const meetings = Array.isArray(data) ? data : [];
+            setMeetings(meetings);
+
+            // Write to local cache
+            if (CACHE_KEY) {
+                localStorage.setItem(CACHE_KEY, JSON.stringify({ data: meetings, ts: Date.now() }));
+            }
+        } catch (err) {
+            console.error('Failed to fetch history:', err);
+        } finally {
+            setLoading(false);
+        }
     };
 
-    useEffect(() => { if (user) fetchHistory(); }, [user, getToken]);
+    useEffect(() => {
+        if (!user) return;
+        fetchHistory();
+        // Refresh every 60s while dashboard is open
+        const interval = setInterval(() => fetchHistory(false), CACHE_TTL);
+        return () => clearInterval(interval);
+    }, [user]);
 
     const filteredMeetings = useMemo(() => {
         return meetings.filter(m => m.title?.toLowerCase().includes(searchQuery.toLowerCase()) || m.roomId?.toLowerCase().includes(searchQuery.toLowerCase()));
