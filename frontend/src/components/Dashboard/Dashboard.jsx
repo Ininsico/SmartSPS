@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Menu } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink } from 'lucide-react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MeetingCard from './MeetingCard';
@@ -139,14 +139,14 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
             <style dangerouslySetInnerHTML={{
                 __html: `
                 .dashboard-root { height: 100vh; width: 100vw; display: flex; background: ${isDarkMode ? darkMaroon : '#ffffff'}; color: ${isDarkMode ? '#fff' : '#000'}; overflow: hidden; }
-                .sidebar-container { height: 100%; transition: transform 0.3s ease; z-index: 1001; }
-                .main-content { flex: 1; display: flex; flexDirection: column; overflow: hidden; }
+                .sidebar-container { height: 100%; transition: none; z-index: 1001; }
+                .main-content { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
                 .scroll-area { flex: 1; overflow-y: auto; padding: 2.5rem 3.5rem; display: flex; flex-direction: column; gap: 2.5rem; }
                 .section-header { display: flex; justify-content: space-between; align-items: center; }
                 .title { font-size: 2.25rem; font-weight: 800; letter-spacing: -1.5px; margin: 0; }
                 .filters-section { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
                 .search-box { display: flex; align-items: center; background: ${isDarkMode ? 'rgba(255,255,255,0.05)' : '#fcfcfc'}; border: 1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#eee'}; border-radius: 8px; padding: 0 0.75rem; height: 40px; width: 300px; }
-                .search-box input { background: transparent; border: none; color: inherit; fontSize: 0.85rem; padding: 0.5rem; width: 100%; outline: none; }
+                .search-box input { background: transparent; border: none; color: inherit; font-size: 0.85rem; padding: 0.5rem; width: 100%; outline: none; }
                 .view-toggle { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#eee'}; }
                 .view-toggle button { padding: 0 0.85rem; height: 40px; border: none; cursor: pointer; background: transparent; color: inherit; }
                 .view-toggle button.active { background: ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#f5f5f5'}; }
@@ -154,12 +154,14 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                 .meetings-grid.grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
                 .meetings-grid.list { grid-template-columns: 1fr; }
                 .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 400px; gap: 1rem; opacity: 0.4; }
+                
                 @media (max-width: 1024px) {
                     .scroll-area { padding: 1.5rem 2rem; }
                     .title { font-size: 1.75rem; }
                 }
+
                 @media (max-width: 768px) {
-                    .sidebar-container { position: fixed; transform: translateX(-100%); left: 0; }
+                    .sidebar-container { position: fixed; transform: translateX(-100%); left: 0; transition: transform 0.3s ease; }
                     .sidebar-container.open { transform: translateX(0); }
                     .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
                     .scroll-area { padding: 1rem; gap: 1.5rem; }

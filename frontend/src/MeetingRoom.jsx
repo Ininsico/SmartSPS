@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import io from 'socket.io-client';
 import Peer from 'simple-peer';
-import { Mic, MicOff, Video as VideoIcon, VideoOff, ScreenShare, ScreenShareOff, MessageSquare, Users, Settings, PhoneOff, Hand, Shield, Sun, Moon, Copy, Check, Link2, X, UserPlus, Wifi, WifiOff, Send, Crown, Volume2, VolumeX, Menu } from 'lucide-react';
+import { Mic, MicOff, Video as VideoIcon, VideoOff, ScreenShare, ScreenShareOff, MessageSquare, Users, Settings, PhoneOff, Hand, Shield, Sun, Moon, Copy, Check, Link2, X, UserPlus, Wifi, WifiOff, Send, Crown, Volume2, VolumeX } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { mediaManager } from './mediaManager';
@@ -84,23 +84,23 @@ const ChatPanel = ({ messages, onSend, onClose, user, isDark, textCol, barBg, ba
     return (
         <motion.div initial={{ x: 320 }} animate={{ x: 0 }} exit={{ x: 320 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="room-panel">
             <div className="panel-header">
-                <span className="panel-title">Chat</span>
-                <button onClick={onClose} className="panel-close"><X size={18} /></button>
+                <span className="panel-title" style={{ color: textCol }}>Chat</span>
+                <button onClick={onClose} className="panel-close" style={{ color: mutedCol }}><X size={18} /></button>
             </div>
             <div ref={ref} className="panel-scroll chat-list">
                 {messages.map(m => (
                     <div key={m.id} className={`chat-msg-wrap ${m.from === 'me' ? 'me' : 'them'}`}>
-                        <div className="chat-meta">
+                        <div className="chat-meta" style={{ color: mutedCol }}>
                             {m.from !== 'me' && m.userAvatar && <img src={m.userAvatar} alt="" />}
                             <span>{m.from === 'me' ? 'You' : m.userName}</span>
                         </div>
-                        <div className="chat-bubble">{m.text}</div>
+                        <div className="chat-bubble" style={{ background: m.from === 'me' ? '#e53e3e' : (isDark ? 'rgba(255,255,255,0.06)' : '#f3f3f6'), color: m.from === 'me' ? '#fff' : textCol }}>{m.text}</div>
                     </div>
                 ))}
             </div>
-            <div className="panel-footer chat-input-wrap">
-                <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Say something…" />
-                <button onClick={send} disabled={!text.trim()} className={text.trim() ? 'send-ready' : ''}><Send size={14} /></button>
+            <div className="panel-footer chat-input-wrap" style={{ borderTop: `1px solid ${barBord}` }}>
+                <input value={text} onChange={e => setText(e.target.value)} onKeyDown={e => e.key === 'Enter' && send()} placeholder="Say something…" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#fff', color: textCol, border: `1px solid ${barBord}` }} />
+                <button onClick={send} disabled={!text.trim()} className={text.trim() ? 'send-ready' : ''} style={{ background: text.trim() ? '#e53e3e' : 'transparent' }}><Send size={14} /></button>
             </div>
         </motion.div>
     );
@@ -111,23 +111,23 @@ const ParticipantsPanel = ({ peers, peerStates, user, mySocketId, isHost, hostSo
     return (
         <motion.div initial={{ x: 320 }} animate={{ x: 0 }} exit={{ x: 320 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }} className="room-panel">
             <div className="panel-header">
-                <span className="panel-title">Participants ({all.length})</span>
-                <button onClick={onClose} className="panel-close"><X size={18} /></button>
+                <span className="panel-title" style={{ color: textCol }}>Participants ({all.length})</span>
+                <button onClick={onClose} className="panel-close" style={{ color: mutedCol }}><X size={18} /></button>
             </div>
             <div className="panel-scroll p-list">
                 {all.map(p => (
-                    <div key={p.socketId} className={`p-item ${p.isYou ? 'you' : ''}`}>
+                    <div key={p.socketId} className={`p-item ${p.isYou ? 'you' : ''}`} style={{ background: p.isYou ? (isDark ? 'rgba(229,62,62,0.1)' : 'rgba(229,62,62,0.06)') : 'transparent' }}>
                         <div className="p-avatar-wrap">
                             {p.userAvatar && <img src={p.userAvatar} alt="" />}
                         </div>
                         <div className="p-info">
-                            <div className="p-name">{p.userName}{p.isYou && <span className="you-label">You</span>}{(p.socketId === hostSocketId || (p.isYou && isHost)) && <Crown size={12} color="#f6c90e" />}</div>
+                            <div className="p-name" style={{ color: textCol }}>{p.userName}{p.isYou && <span className="you-label">You</span>}{(p.socketId === hostSocketId || (p.isYou && isHost)) && <Crown size={12} color="#f6c90e" />}</div>
                             <div className="p-status">
                                 {p.muted ? <MicOff size={11} color="#fc8181" /> : <Mic size={11} color="#48bb78" />}
                                 {p.handRaised && <span>✋</span>}
                             </div>
                         </div>
-                        {isHost && !p.isYou && <button onClick={() => onAdminMute(p.socketId, p.muted)} className={`p-mute-btn ${p.muted ? 'muted' : ''}`}>{p.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>}
+                        {isHost && !p.isYou && <button onClick={() => onAdminMute(p.socketId, p.muted)} className={`p-mute-btn ${p.muted ? 'muted' : ''}`} style={{ color: p.muted ? '#fc8181' : mutedCol }}>{p.muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>}
                     </div>
                 ))}
             </div>
@@ -136,30 +136,30 @@ const ParticipantsPanel = ({ peers, peerStates, user, mySocketId, isHost, hostSo
 };
 
 const ReactionPicker = ({ onPick, onClose, isDark, barBord }) => (
-    <motion.div initial={{ opacity: 0, y: 10, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.9 }} className="react-picker">
+    <motion.div initial={{ opacity: 0, y: 10, scale: 0.9 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10, scale: 0.9 }} className="react-picker" style={{ background: isDark ? '#1a0a0a' : '#fff', border: `1px solid ${barBord}` }}>
         {REACTIONS.map(e => (<button key={e} onClick={() => { onPick(e); onClose(); }}>{e}</button>))}
     </motion.div>
 );
 
-const InviteModal = ({ roomId, inviteUrl, onClose, isDark, textCol, barBord, mutedCol }) => {
+const InviteModal = ({ roomId, onClose, isDark, textCol, barBord, mutedCol }) => {
     const [done, setDone] = useState(false);
     const copy = () => { const link = `${window.location.origin}?room=${roomId}`; navigator.clipboard.writeText(link).then(() => { setDone(true); setTimeout(() => setDone(false), 2500); }); };
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="invite-overlay" onClick={onClose}>
-            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="invite-modal" onClick={e => e.stopPropagation()}>
+            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} exit={{ scale: 0.9 }} className="invite-modal" style={{ background: isDark ? '#1a0a0a' : '#fff', color: textCol, border: `1px solid ${barBord}` }} onClick={e => e.stopPropagation()}>
                 <div className="invite-top">
-                    <div><h2>Invite people</h2><p>Share code or link with your team</p></div>
-                    <button onClick={onClose}><X size={20} /></button>
+                    <div><h2>Invite people</h2><p style={{ color: mutedCol }}>Share code or link with your team</p></div>
+                    <button onClick={onClose} style={{ color: mutedCol }}><X size={20} /></button>
                 </div>
                 <div className="invite-group">
-                    <label>Room Code</label>
-                    <div className="invite-box code"><span>{roomId.toUpperCase()}</span><Shield size={18} /></div>
+                    <label style={{ color: mutedCol }}>Room Code</label>
+                    <div className="invite-box code" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f7', border: `1px solid ${barBord}` }}><span>{roomId.toUpperCase()}</span><Shield size={18} /></div>
                 </div>
                 <div className="invite-group">
-                    <label>Invite Link</label>
-                    <div className="invite-box link"><Link2 size={14} /><span>{`${window.location.origin}?room=${roomId}`}</span></div>
+                    <label style={{ color: mutedCol }}>Invite Link</label>
+                    <div className="invite-box link" style={{ background: isDark ? 'rgba(255,255,255,0.05)' : '#f5f5f7', border: `1px solid ${barBord}` }}><Link2 size={14} /><span>{`${window.location.origin}?room=${roomId}`}</span></div>
                 </div>
-                <button onClick={copy} className={`copy-btn ${done ? 'done' : ''}`}>{done ? <><Check size={17} /> Copied!</> : <><Copy size={17} /> Copy Link</>}</button>
+                <button onClick={copy} className={`copy-btn ${done ? 'done' : ''}`} style={{ background: done ? '#276749' : '#e53e3e' }}>{done ? <><Check size={17} /> Copied!</> : <><Copy size={17} /> Copy Link</>}</button>
             </motion.div>
         </motion.div>
     );
@@ -235,7 +235,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     const adminMute = (t, m) => socketRef.current?.emit(m ? 'admin-request-unmute' : 'admin-mute', { targetSocketId: t, roomId });
 
     const D = isDarkMode;
-    const bg = D ? '#1a0a0a' : '#f0f0f5', tc = D ? '#fff' : '#000', bd = D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', bb = D ? 'rgba(26,10,10,0.95)' : 'rgba(255,255,255,0.95)';
+    const bg = D ? '#1a0a0a' : '#f0f0f5', tc = D ? '#fff' : '#000', bd = D ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)', bb = D ? 'rgba(26,10,10,0.95)' : 'rgba(255,255,255,0.95)', mc = D ? 'rgba(255,255,255,0.45)' : 'rgba(0,0,0,0.45)';
     const n = peers.length + 1;
     const gridStyle = () => {
         let cols = 1; if (n > 1) cols = 2; if (n > 4) cols = 3; if (n > 9) cols = 4;
@@ -248,16 +248,16 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             <header className="room-header">
                 <div className="header-left">
                     <VideoIcon size={20} color="#e53e3e" />
-                    <span className="logo-txt">smartMeet</span>
+                    <span className="logo-txt" style={{ color: tc }}>smartMeet</span>
                 </div>
                 <div className="header-right">
-                    <button className="invite-btn hide-mobile" onClick={() => setShowInvite(true)}><UserPlus size={16} /><span>Invite</span></button>
-                    <button className="theme-btn" onClick={() => setIsDarkMode(!D)}>{D ? <Sun size={16} /> : <Moon size={16} />}</button>
-                    <div className="p-count"><Users size={16} /><span>{n}</span></div>
+                    <button className="invite-btn hide-mobile" onClick={() => setShowInvite(true)} style={{ color: tc }}><UserPlus size={16} /><span>Invite</span></button>
+                    <button className="theme-btn" onClick={() => setIsDarkMode(!D)} style={{ color: tc }}>{D ? <Sun size={16} /> : <Moon size={16} />}</button>
+                    <div className="p-count" style={{ color: mc }}><Users size={16} /><span>{n}</span></div>
                     <UserButton afterSignOutUrl="/" />
                 </div>
             </header>
-            <main className="room-main" style={{ paddingRight: panel ? 320 : 0 }}>
+            <main className="room-main" style={{ paddingRight: (panel && window.innerWidth > 768) ? 320 : 0 }}>
                 <div style={gridStyle()}>
                     <motion.div layout style={tileBase}>
                         <video ref={localRef} autoPlay playsInline muted style={{ ...videoFill, transform: 'rotateY(180deg)' }} />
@@ -268,49 +268,57 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                 </div>
             </main>
             <footer className="room-footer">
-                <div className="footer-left hide-mobile">{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
+                <div className="footer-left hide-mobile" style={{ color: mc }}>{new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</div>
                 <div className="footer-center">
-                    <button className={`ctrl-btn ${!micOn ? 'danger' : ''}`} onClick={toggleMic}>{micOn ? <Mic size={20} /> : <MicOff size={20} />}</button>
-                    <button className={`ctrl-btn ${!videoOn ? 'danger' : ''}`} onClick={toggleVideo}>{videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}</button>
-                    <button className="ctrl-btn" onClick={toggleShare}><ScreenShare size={20} /></button>
-                    <button className={`ctrl-btn ${handRaised ? 'active' : ''}`} onClick={toggleHand}><Hand size={20} /></button>
+                    <button className={`ctrl-btn ${!micOn ? 'danger' : ''}`} onClick={toggleMic} style={{ color: !micOn ? '#fff' : tc }}>{micOn ? <Mic size={20} /> : <MicOff size={20} />}</button>
+                    <button className={`ctrl-btn ${!videoOn ? 'danger' : ''}`} onClick={toggleVideo} style={{ color: !videoOn ? '#fff' : tc }}>{videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}</button>
+                    <button className="ctrl-btn" onClick={toggleShare} style={{ color: tc }}><ScreenShare size={20} /></button>
+                    <button className={`ctrl-btn ${handRaised ? 'active' : ''}`} onClick={toggleHand} style={{ color: handRaised ? '#e53e3e' : tc }}><Hand size={20} /></button>
                     <div className="btn-group">
                         <button className="ctrl-btn" onClick={() => setShowReacts(!showReacts)}>😊</button>
-                        <button className={`ctrl-btn ${panel === 'chat' ? 'active' : ''}`} onClick={() => setPanel(panel === 'chat' ? null : 'chat')}><MessageSquare size={18} />{unread > 0 && <span className="badge">{unread}</span>}</button>
-                        <button className={`ctrl-btn ${panel === 'participants' ? 'active' : ''}`} onClick={() => setPanel(panel === 'participants' ? null : 'participants')}><Users size={18} /></button>
+                        <button className={`ctrl-btn ${panel === 'chat' ? 'active' : ''}`} onClick={() => setPanel(panel === 'chat' ? null : 'chat')} style={{ color: tc }}><MessageSquare size={18} />{unread > 0 && <span className="badge">{unread}</span>}</button>
+                        <button className={`ctrl-btn ${panel === 'participants' ? 'active' : ''}`} onClick={() => setPanel(panel === 'participants' ? null : 'participants')} style={{ color: tc }}><Users size={18} /></button>
                     </div>
                     <button className="ctrl-btn hangup" onClick={hangup}><PhoneOff size={20} /></button>
                 </div>
-                <div className="footer-right hide-mobile"><button className="ctrl-btn"><Settings size={18} /></button></div>
+                <div className="footer-right hide-mobile"><button className="ctrl-btn" style={{ color: tc }}><Settings size={18} /></button></div>
             </footer>
             <AnimatePresence>
-                {panel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} onClose={() => setPanel(null)} user={user} isDark={D} />}
-                {panel === 'participants' && <ParticipantsPanel peers={peers} peerStates={peerStates} user={user} isHost={isHost} onAdminMute={adminMute} onClose={() => setPanel(null)} isDark={D} />}
-                {showReacts && <ReactionPicker onPick={sendReaction} onClose={() => setShowReacts(false)} />}
-                {showInvite && <InviteModal roomId={roomId} onClose={() => setShowInvite(false)} isDark={D} />}
+                {panel === 'chat' && <ChatPanel messages={messages} onSend={sendMessage} onClose={() => setPanel(null)} user={user} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} />}
+                {panel === 'participants' && <ParticipantsPanel peers={peers} peerStates={peerStates} user={user} isHost={isHost} onAdminMute={adminMute} onClose={() => setPanel(null)} isDark={D} textCol={tc} barBg={bb} barBord={bd} mutedCol={mc} />}
+                {showReacts && <ReactionPicker onPick={sendReaction} onClose={() => setShowReacts(false)} isDark={D} barBord={bd} />}
+                {showInvite && <InviteModal roomId={roomId} onClose={() => setShowInvite(false)} isDark={D} textCol={tc} barBord={bd} mutedCol={mc} />}
             </AnimatePresence>
             <style dangerouslySetInnerHTML={{
                 __html: `
                 .meeting-room-root { height: 100vh; display: flex; flex-direction: column; background: ${bg}; color: ${tc}; position: relative; overflow: hidden; }
-                .room-header { height: 60px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-bottom: 1px solid ${bd}; backdrop-filter: blur(10px); }
+                .room-header { height: 60px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-bottom: 1px solid ${bd}; backdrop-filter: blur(10px); z-index: 100; }
                 .header-left, .header-right { display: flex; align-items: center; gap: 1rem; }
                 .room-main { flex: 1; padding: 1.5rem; display: flex; align-items: center; transition: padding 0.3s; overflow-y: auto; }
-                .room-footer { height: 80px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-top: 1px solid ${bd}; }
+                .room-footer { height: 80px; padding: 0 1.5rem; display: flex; align-items: center; justify-content: space-between; background: ${bb}; border-top: 1px solid ${bd}; z-index: 100; }
                 .footer-center { display: flex; align-items: center; gap: 0.5rem; }
-                .ctrl-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid ${bd}; background: transparent; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; }
+                .ctrl-btn { width: 44px; height: 44px; border-radius: 12px; border: 1px solid ${bd}; background: transparent; color: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; transition: 0.2s; position: relative; }
                 .ctrl-btn:hover { background: ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}; }
-                .ctrl-btn.active { background: #e53e3e; color: #fff; }
-                .ctrl-btn.danger { background: #e53e3e; color: #fff; }
-                .ctrl-btn.hangup { background: #e53e3e; color: #fff; width: 60px; }
-                .room-panel { position: fixed; right: 0; top: 60px; bottom: 80px; width: 320px; background: ${bb}; border-left: 1px solid ${bd}; z-index: 50; display: flex; flex-direction: column; }
-                .panel-header { padding: 1rem; border-bottom: 1px solid ${bd}; display: flex; justify-content: space-between; }
-                .panel-scroll { flex: 1; overflow-y: auto; padding: 1rem; }
+                .ctrl-btn.active { background: rgba(229, 62, 62, 0.1); border-color: #e53e3e; }
+                .ctrl-btn.danger { background: #e53e3e; border-color: #e53e3e; }
+                .ctrl-btn.hangup { background: #e53e3e; color: #fff; width: 60px; border-color: #e53e3e; }
+                .room-panel { position: fixed; right: 0; top: 0; bottom: 0; width: 320px; background: ${bb}; border-left: 1px solid ${bd}; z-index: 200; display: flex; flex-direction: column; box-shadow: -8px 0 32px rgba(0,0,0,0.2); }
+                .panel-header { padding: 1.25rem; border-bottom: 1px solid ${bd}; display: flex; justify-content: space-between; align-items: center; }
+                .panel-scroll { flex: 1; overflow-y: auto; padding: 1.25rem; }
+                .badge { position: absolute; top: -5px; right: -5px; background: #e53e3e; color: #fff; font-size: 0.65rem; font-weight: 800; padding: 2px 6px; border-radius: 10px; border: 2px solid ${bb}; }
+                
+                @media (min-width: 769px) {
+                    .room-panel { top: 60px; bottom: 80px; }
+                }
+
                 @media (max-width: 768px) {
                     .hide-mobile { display: none; }
-                    .room-panel { width: 100%; top: 0; bottom: 0; }
-                    .room-main { padding: 0.5rem; }
-                    .footer-center { gap: 0.25rem; width: 100%; justify-content: center; }
-                    .ctrl-btn { width: 40px; height: 40px; }
+                    .room-panel { width: 100%; z-index: 300; }
+                    .room-main { padding: 0.75rem; }
+                    .footer-center { gap: 0.4rem; width: 100%; justify-content: space-around; }
+                    .ctrl-btn { width: 42px; height: 42px; border-radius: 10px; }
+                    .ctrl-btn.hangup { width: 50px; }
+                    .btn-group { display: flex; gap: 0.4rem; }
                 }
             ` }} />
         </div>
