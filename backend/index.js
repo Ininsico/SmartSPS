@@ -14,9 +14,22 @@ import * as ctrl from './controllers/meetingController.js';
 const app = express();
 const httpServer = createServer(app);
 
-// SIMPLE CORS - ACCEPT EVERYTHING
-app.use(cors({ origin: true, credentials: true }));
-app.options('*', cors());
+// GLOBAL CORS GUARD - Must be the FIRST thing the app does
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    // Echo the origin back to support credentials (which '*' doesn't allow)
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token, X-Clerk-Instance-Id');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Max-Age', '86400'); // Cache for 24 hours
+
+    // Instant response for all Preflight (OPTIONS)
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
+    next();
+});
 
 app.use(express.json());
 
@@ -55,8 +68,16 @@ const getAdapter = async () => {
 };
 getAdapter().catch(console.error);
 
-app.use('/api/meetings', meetingRoutes);
+app.use(['/api/meetings', '/meetings'], (req, res, next) => {
+    meetingRoutes(req, res, next);
+});
 app.get('/health', (_req, res) => res.json({ status: 'ok', ts: Date.now() }));
+
+// Catch unknown API requests to prevent silent 404s
+app.use('/api/*', (req, res) => {
+    console.warn(` 404 at API Path: ${req.originalUrl}`);
+    res.status(404).json({ error: 'API route not found', path: req.originalUrl });
+});
 
 // Middleware to ensure adapter is ready before any signals are processed
 io.use(async (socket, next) => {
