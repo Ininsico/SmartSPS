@@ -3,12 +3,10 @@ import { Video, Plus, Keyboard, ExternalLink, Sun, Moon, ArrowRight, X, Link2 } 
 import { motion, AnimatePresence } from 'framer-motion';
 import PremiumButton from './PremiumButton';
 import { UserButton } from '@clerk/clerk-react';
+import { cn } from './utils';
 
 const JoinModal = ({ onClose, isDarkMode, onJoin }) => {
   const [roomInput, setRoomInput] = useState('');
-  const tc = isDarkMode ? '#fff' : '#000';
-  const bg = isDarkMode ? '#1e1a1a' : '#fff';
-  const bc = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
 
   const handleJoin = (e) => {
     e.preventDefault();
@@ -26,18 +24,52 @@ const JoinModal = ({ onClose, isDarkMode, onJoin }) => {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, zIndex: 1100, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
-      <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} onClick={e => e.stopPropagation()} style={{ background: bg, width: '100%', maxWidth: '450px', borderRadius: '24px', padding: '2rem', border: `1px solid ${bc}`, color: tc }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h2 style={{ margin: 0, fontWeight: 800, fontSize: '1.5rem' }}>Join Meeting</h2>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tc }}><X size={24} /></button>
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      className="fixed inset-0 z-[1100] bg-black/70 backdrop-blur-md flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        onClick={e => e.stopPropagation()}
+        className={cn(
+          "w-full max-w-md rounded-3xl p-8 border shadow-2xl transition-all",
+          isDarkMode ? "bg-premium-surface border-white/10 text-white" : "bg-white border-black/5 text-black"
+        )}
+      >
+        <div className="flex justify-between items-center mb-6">
+          <h2 className="m-0 font-black text-2xl tracking-tight">Join Meeting</h2>
+          <button
+            onClick={onClose}
+            className={cn(
+              "p-2 rounded-full hover:bg-white/5 transition-colors border-none cursor-pointer",
+              isDarkMode ? "text-white" : "text-black"
+            )}
+          >
+            <X size={24} />
+          </button>
         </div>
-        <form onSubmit={handleJoin} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+        <form onSubmit={handleJoin} className="flex flex-col gap-5">
           <div>
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.8rem', fontWeight: 700 }}>Meeting Code or Link</label>
-            <input required type="text" placeholder="e.g. abc-def-ghi or https://..." style={{ width: '100%', padding: '0.75rem 1rem', borderRadius: '12px', border: `1px solid ${bc}`, background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f9f9f9', color: tc, outline: 'none' }} value={roomInput} onChange={e => setRoomInput(e.target.value)} autoFocus />
+            <label className="block mb-2 text-[10px] font-black uppercase tracking-widest opacity-50">Meeting Code or Link</label>
+            <input
+              required
+              type="text"
+              placeholder="e.g. abc-def-ghi or https://..."
+              className={cn(
+                "w-full px-5 py-3.5 rounded-2xl border outline-none font-medium transition-all",
+                isDarkMode ? "bg-white/5 border-white/5 text-white focus:bg-white/10" : "bg-gray-50 border-gray-100 text-black focus:bg-white"
+              )}
+              value={roomInput}
+              onChange={e => setRoomInput(e.target.value)}
+              autoFocus
+            />
           </div>
-          <PremiumButton type="submit" style={{ width: '100%', marginTop: '1rem' }} icon={ArrowRight}>
+          <PremiumButton type="submit" className="w-full mt-2" icon={ArrowRight}>
             Join Now
           </PremiumButton>
         </form>
@@ -60,106 +92,136 @@ const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
   }, []);
 
   const D = isDarkMode;
-  const bg = D ? '#1a0a0a' : '#ffffff';
-  const tc = D ? '#ffffff' : '#000000';
-  const sc = D ? '#888' : '#666';
-  const bc = D ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-  const nb = D ? 'rgba(26,10,10,0.8)' : 'rgba(255,255,255,0.8)';
 
   return (
-    <div className="landing-container">
-      <nav className="landing-nav glass-morphism">
-        <div className="logo-section">
-          <Video className="logo-icon" size={28} color={tc} />
-          <span className="logo-text" style={{ color: tc }}>smart<span className="bold-text">Meet</span></span>
-        </div>
-        <div className="nav-right">
-          <div className="nav-actions">
-            <button onClick={() => setIsDarkMode(!D)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: tc, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px', borderRadius: '50%', '&:hover': { background: bc } }}>
-              {D ? <Sun size={20} /> : <Moon size={20} />}
-            </button>
-            <UserButton afterSignOutUrl="/" />
-            <span className="nav-time" style={{ color: sc }}>
-              {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString()}
-            </span>
+    <div className={cn(
+      "min-h-screen flex flex-col transition-colors duration-500 relative overflow-x-hidden",
+      D ? "bg-premium-bg text-white" : "bg-white text-black"
+    )}>
+      {/* Grid Pattern Background */}
+      <div className={cn(
+        "fixed inset-0 pointer-events-none opacity-[0.03]",
+        D ? "bg-[radial-gradient(#fff_1px,transparent_1px)]" : "bg-[radial-gradient(#000_1px,transparent_1px)]"
+      )} style={{ backgroundSize: '32px 32px' }} />
+
+      <nav className={cn(
+        "flex justify-between items-center px-6 sm:px-12 py-6 border-b sticky top-0 z-[100] backdrop-blur-xl",
+        D ? "border-white/5 bg-premium-bg/80" : "border-gray-100 bg-white/80"
+      )}>
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-premium-accent flex items-center justify-center shadow-lg shadow-premium-accent/20">
+            <Video className="text-white" size={18} />
           </div>
+          <span className="text-xl font-medium tracking-tight">smart<span className="font-black">Meet</span></span>
+        </div>
+
+        <div className="flex items-center gap-4 sm:gap-6">
+          <div className="hidden sm:flex items-center gap-3 text-xs font-bold opacity-40 uppercase tracking-widest">
+            {new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date().toLocaleDateString()}
+          </div>
+          <button
+            onClick={() => setIsDarkMode(!D)}
+            className={cn(
+              "p-2.5 rounded-xl transition-all active:scale-95 border-none cursor-pointer",
+              D ? "bg-white/5 text-white hover:bg-white/10" : "bg-gray-100 text-black hover:bg-gray-200"
+            )}
+          >
+            {D ? <Sun size={18} /> : <Moon size={18} />}
+          </button>
+          <UserButton afterSignOutUrl="/" />
         </div>
       </nav>
 
-      <main className="landing-main">
+      <main className="flex-1 flex items-center justify-center p-6 sm:p-12 relative z-10">
         <motion.div
-          className="hero-section"
-          initial={{ opacity: 0, scale: 0.98 }}
-          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-4xl w-full text-center"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
         >
-          <div className="hero-content">
-            <h1 className="hero-title" style={{ color: tc }}>
-              Secure video conferencing <br /> for <span className="word-rotator-container">
-                <AnimatePresence mode="wait">
-                  <motion.span
-                    key={words[wordIndex]}
-                    initial={{ y: 20, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    exit={{ y: -20, opacity: 0 }}
-                    transition={{ duration: 0.4, ease: "easeInOut" }}
-                    className="underline-text"
-                  >
-                    {words[wordIndex]}
-                  </motion.span>
-                </AnimatePresence>
-              </span>
-            </h1>
-            <p className="hero-subtitle" style={{ color: sc }}>
-              Experience crystal-clear communication with smartMeet <br />
-              Enterprise-grade security simplified for your everyday connections
-            </p>
-
-            <div className="action-hub">
-              <div className="primary-actions">
-                <PremiumButton
-                  className="hero-btn"
-                  icon={Plus}
-                  onClick={onStartMeeting}
+          <h1 className="text-4xl sm:text-7xl font-black leading-[1.05] tracking-tight mb-8">
+            Secure video conferencing <br className="hidden sm:block" />
+            for <span className="inline-flex relative min-w-[200px] sm:min-w-[320px] justify-center sm:justify-start">
+              <AnimatePresence mode="wait">
+                <motion.span
+                  key={words[wordIndex]}
+                  initial={{ y: 20, opacity: 0 }}
+                  animate={{ y: 0, opacity: 1 }}
+                  exit={{ y: -20, opacity: 0 }}
+                  transition={{ duration: 0.4, ease: "easeOut" }}
+                  className="underline underline-offset-[8px] decoration-premium-accent decoration-4 sm:decoration-8"
                 >
-                  Start a Meeting
-                </PremiumButton>
+                  {words[wordIndex]}
+                </motion.span>
+              </AnimatePresence>
+            </span>
+          </h1>
 
-                <PremiumButton
-                  className="hero-btn-secondary"
-                  variant="secondary"
-                  icon={Link2}
-                  onClick={() => setShowJoin(true)}
-                >
-                  Join Meeting
-                </PremiumButton>
+          <p className={cn(
+            "text-lg sm:text-2xl font-medium leading-relaxed max-w-2xl mx-auto mb-12",
+            D ? "text-white/40" : "text-gray-500"
+          )}>
+            Experience crystal-clear communication with smartMeet. <br className="hidden sm:block" />
+            Enterprise-grade security simplified for everyone.
+          </p>
 
-                <div className="input-group-centered" style={{ background: D ? 'rgba(255,255,255,0.03)' : '#fdfdfd', borderColor: D ? 'rgba(255,255,255,0.1)' : '#e5e5e5' }}>
-                  <div className="input-wrapper-light">
-                    <Keyboard size={20} className="input-icon-left" strokeWidth={1.5} color={sc} />
-                    <input
-                      type="text"
-                      placeholder="Enter a code or link"
-                      value={roomName}
-                      onChange={(e) => setRoomName(e.target.value)}
-                      style={{ color: tc }}
-                    />
-                  </div>
-                  <PremiumButton
-                    className="join-button-minimal"
-                    disabled={!roomName}
-                    onClick={() => onJoin(roomName)}
-                  >
-                    Join Room
-                  </PremiumButton>
+          <div className="flex flex-col items-center gap-8">
+            <div className="flex flex-wrap items-center justify-center gap-4">
+              <PremiumButton
+                className="h-14 sm:h-16 px-8 sm:px-12 text-sm sm:text-base shadow-2xl"
+                icon={Plus}
+                onClick={onStartMeeting}
+              >
+                Start Meeting
+              </PremiumButton>
+
+              <PremiumButton
+                variant="secondary"
+                className="h-14 sm:h-16 px-8 sm:px-12 text-sm sm:text-base"
+                icon={Link2}
+                onClick={() => setShowJoin(true)}
+              >
+                Join Meeting
+              </PremiumButton>
+
+              <div className={cn(
+                "flex items-center p-1.5 rounded-full border-2 transition-all group focus-within:border-premium-accent w-full sm:w-auto",
+                D ? "bg-white/5 border-white/5" : "bg-gray-50 border-gray-100"
+              )}>
+                <div className="flex items-center px-4 gap-3">
+                  <Keyboard size={20} className="opacity-30" />
+                  <input
+                    type="text"
+                    placeholder="Enter code or link"
+                    value={roomName}
+                    onChange={(e) => setRoomName(e.target.value)}
+                    className={cn(
+                      "bg-transparent border-none outline-none text-sm font-bold w-full sm:w-[200px] py-2",
+                      D ? "text-white placeholder:text-white/20" : "text-black placeholder:text-gray-400"
+                    )}
+                  />
                 </div>
+                <PremiumButton
+                  className="px-6 h-11 text-[10px] !uppercase tracking-widest shrink-0"
+                  disabled={!roomName}
+                  onClick={() => onJoin(roomName)}
+                >
+                  Join
+                </PremiumButton>
               </div>
+            </div>
 
-              <div className="divider-minimal" style={{ background: bc }} />
-
-              <div className="secondary-info" style={{ color: sc }}>
-                <p>New to smartMeet? <a href="#" className="link-action" style={{ color: tc, borderBottomColor: tc }}>Create an account <ExternalLink size={14} /></a></p>
-              </div>
+            <div className={cn(
+              "flex items-center gap-2 text-sm font-bold",
+              D ? "text-white/40" : "text-gray-400"
+            )}>
+              New to smartMeet?
+              <a href="#" className={cn(
+                "flex items-center gap-1.5 underline underline-offset-4 decoration-2 transition-colors",
+                D ? "text-white hover:text-premium-accent" : "text-black hover:text-premium-accent"
+              )}>
+                Create an account <ExternalLink size={14} />
+              </a>
             </div>
           </div>
         </motion.div>
@@ -168,204 +230,6 @@ const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
       <AnimatePresence>
         {showJoin && <JoinModal onClose={() => setShowJoin(false)} isDarkMode={D} onJoin={onJoin} />}
       </AnimatePresence>
-
-      <style dangerouslySetInnerHTML={{
-        __html: `
-        .landing-container {
-          min-height: 100vh;
-          display: flex;
-          flex-direction: column;
-          background-color: ${bg};
-          background-image: radial-gradient(${D ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} 1px, transparent 1px);
-          background-size: 32px 32px;
-          transition: background-color 0.4s ease;
-        }
-
-        .landing-nav {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          padding: 1.5rem 3rem;
-          margin: 0;
-          border-bottom: 1px solid ${bc};
-          background: ${nb};
-          backdrop-filter: blur(10px);
-          z-index: 100;
-        }
-
-        .logo-section {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          font-size: 1.75rem;
-          font-weight: 500;
-          letter-spacing: -0.5px;
-        }
-
-        .bold-text {
-          font-weight: 800;
-        }
-
-        .nav-actions {
-          display: flex;
-          align-items: center;
-          gap: 1.5rem;
-          font-weight: 500;
-          font-size: 0.95rem;
-        }
-
-        .landing-main {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 2rem;
-        }
-
-        .hero-section {
-          max-width: 900px;
-          width: 100%;
-          text-align: center;
-        }
-
-        .hero-title {
-          font-size: 4.5rem;
-          line-height: 1.1;
-          letter-spacing: -2px;
-          font-weight: 800;
-          margin-bottom: 2.5rem;
-        }
-
-        .underline-text {
-          text-decoration: underline;
-          text-underline-offset: 8px;
-          text-decoration-thickness: 4px;
-        }
-
-        .word-rotator-container {
-          display: inline-flex;
-          position: relative;
-          min-width: 280px;
-          justify-content: flex-start;
-          vertical-align: top;
-        }
-
-        .hero-subtitle {
-          font-size: 1.5rem;
-          margin-bottom: 4rem;
-          line-height: 1.5;
-          max-width: 750px;
-          margin-left: auto;
-          margin-right: auto;
-        }
-
-        .action-hub {
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          gap: 2rem;
-        }
-
-        .primary-actions {
-          display: flex;
-          gap: 2rem;
-          align-items: center;
-          flex-wrap: wrap;
-          justify-content: center;
-        }
-
-        .hero-btn {
-          height: 60px;
-          padding: 0 2.5rem;
-          font-size: 1rem;
-          border-radius: 99px;
-          box-shadow: 0 10px 20px rgba(0,0,0,0.1);
-        }
-
-        .hero-btn-secondary {
-          height: 60px;
-          padding: 0 2.5rem;
-          font-size: 1rem;
-          border-radius: 99px;
-          border: 1px solid ${bc};
-        }
-
-        .input-group-centered {
-          display: flex;
-          align-items: center;
-          padding: 0.5rem;
-          border-radius: 99px;
-          border: 1px solid;
-          transition: all 0.3s ease;
-        }
-
-        .input-group-centered:focus-within {
-          border-color: ${tc};
-          box-shadow: 0 0 0 1px ${tc};
-        }
-
-        .input-wrapper-light {
-          display: flex;
-          align-items: center;
-          padding: 0 1.25rem;
-          gap: 1rem;
-        }
-
-        .input-wrapper-light input {
-          border: none;
-          background: transparent;
-          font-size: 1rem;
-          padding: 0.75rem 0;
-          outline: none;
-          width: 220px;
-          font-weight: 600;
-          font-family: 'Montserrat', sans-serif;
-        }
-
-        .join-button-minimal {
-          height: 50px;
-          padding: 0 1.75rem !important;
-          font-size: 0.75rem !important;
-          letter-spacing: 1px !important;
-        }
-
-        .divider-minimal {
-          width: 100px;
-          height: 1px;
-        }
-
-        .secondary-info {
-          font-size: 1rem;
-        }
-
-        .link-action {
-          text-decoration: none;
-          font-weight: 700;
-          border-bottom: 2px solid;
-          padding-bottom: 1px;
-          display: inline-flex;
-          align-items: center;
-          gap: 0.25rem;
-        }
-
-        @media (max-width: 768px) {
-          .hero-title {
-            font-size: 3rem;
-            letter-spacing: -1px;
-          }
-          .hero-subtitle {
-            font-size: 1.2rem;
-          }
-          .primary-actions {
-            flex-direction: column;
-            width: 100%;
-          }
-          .hero-btn, .input-group-centered {
-            width: 100%;
-            max-width: 400px;
-          }
-        }
-      `}} />
     </div>
   );
 };

@@ -1,0 +1,45 @@
+/** @type {import('tailwindcss').Config} */
+export default {
+    content: [
+        "./index.html",
+        "./src/**/*.{js,ts,jsx,tsx}",
+    ],
+    theme: {
+        extend: {
+            colors: {
+                premium: {
+                    bg: '#1a0a0a',
+                    surface: '#1e1a1a',
+                    card: '#120505',
+                    accent: '#818cf8', // Indigo
+                    danger: '#e53e3e', // Red
+                    success: '#68d391', // Green
+                    warning: '#f6c90e', // Gold/Yellow
+                    text: {
+                        primary: '#ffffff',
+                        secondary: 'rgba(255, 255, 255, 0.6)',
+                        muted: 'rgba(255, 255, 255, 0.4)',
+                    }
+                }
+            },
+            fontFamily: {
+                montserrat: ['Montserrat', 'sans-serif'],
+            },
+            backdropBlur: {
+                premium: '20px',
+            },
+            animation: {
+                'pulse-ring': 'pulse-ring 2s infinite',
+                'spin-slow': 'spin 3s linear infinite',
+            },
+            keyframes: {
+                'pulse-ring': {
+                    '0%': { transform: 'scale(0.85)', opacity: '0.5' },
+                    '50%': { transform: 'scale(1.05)', opacity: '0.2' },
+                    '100%': { transform: 'scale(0.85)', opacity: '0.5' },
+                }
+            }
+        },
+    },
+    plugins: [],
+}

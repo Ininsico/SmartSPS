@@ -6,6 +6,7 @@ import cors from 'cors';
 import mongoose from 'mongoose';
 import meetingRoutes from './routes/meetingRoutes.js';
 import recordingRoutes from './routes/recordingRoutes.js';
+import vexaRoutes from './routes/vexaRoutes.js';
 import { getCacheStats } from './cache.js';
 
 const app = express();
@@ -43,6 +44,7 @@ app.use(async (req, res, next) => {
 
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/recordings', recordingRoutes);
+app.use('/api/vexa', vexaRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 app.get('/cache-stats', (req, res) => res.json(getCacheStats()));
 app.get('/debug', (req, res) => res.json({

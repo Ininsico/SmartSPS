@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Video as VideoIcon, VideoOff, Play } from 'lucide-react';
+import { Mic, MicOff, Video as VideoIcon, VideoOff, Play, ArrowLeft } from 'lucide-react';
 import PremiumButton from '../PremiumButton';
 import { motion } from 'framer-motion';
 import { mediaManager } from '../mediaManager';
+import { cn } from '../utils';
 
 const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
     const [micOn, setMicOn] = useState(true);
     const [videoOn, setVideoOn] = useState(true);
     const streamRef = useRef(null);
     const videoRef = useRef();
-    const darkMaroon = '#1a0a0a';
 
     useEffect(() => {
         let isMounted = true;
@@ -21,16 +21,6 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
                         echoCancellation: true,
                         noiseSuppression: true,
                         autoGainControl: true,
-                        channelCount: 1,
-                        sampleRate: 48000,
-                        sampleSize: 16,
-                        latency: 0.01,
-                        googEchoCancellation: true,
-                        googAutoGainControl: true,
-                        googNoiseSuppression: true,
-                        googHighpassFilter: true,
-                        googExperimentalEchoCancellation: true,
-                        googExperimentalNoiseSuppression: true,
                     }
                 });
                 if (!isMounted) {
@@ -63,132 +53,106 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
         }
     }, [micOn, videoOn]);
 
-    const styles = {
-        container: {
-            height: '100vh',
-            width: '100vw',
-            backgroundColor: isDarkMode ? darkMaroon : '#ffffff',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            color: isDarkMode ? '#fff' : '#000',
-            fontFamily: "'Montserrat', sans-serif"
-        },
-        previewCard: {
-            width: '100%',
-            maxWidth: '640px',
-            aspectRatio: '16/9',
-            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.03)' : '#f8f8f8',
-            borderRadius: '24px',
-            position: 'relative',
-            overflow: 'hidden',
-            border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)'}`,
-            boxShadow: '0 20px 50px rgba(0,0,0,0.1)'
-        },
-        video: {
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            transform: 'rotateY(180deg)'
-        },
-        overlay: {
-            position: 'absolute',
-            bottom: '1.5rem',
-            left: '50%',
-            transform: 'translateX(-50%)',
-            display: 'flex',
-            gap: '1rem',
-            zIndex: 10
-        },
-        controlBtn: {
-            width: '50px',
-            height: '50px',
-            borderRadius: '50%',
-            border: 'none',
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            color: '#fff',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            backdropFilter: 'blur(10px)',
-            transition: 'all 0.2s ease'
-        },
-        offBtn: {
-            backgroundColor: '#ff4d4d',
-            color: '#fff'
-        },
-        infoSection: {
-            marginTop: '2.5rem',
-            textAlign: 'center',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '1.5rem',
-            alignItems: 'center'
-        },
-        title: {
-            fontSize: '1.75rem',
-            fontWeight: '800',
-            letterSpacing: '-1px'
-        }
-    };
-
     const handleJoin = () => {
         mediaManager.unregister(streamRef.current);
         streamRef.current = null;
         onJoin({ micOn, videoOn });
     };
 
+    const D = isDarkMode;
+
     return (
-        <div style={styles.container}>
+        <div className={cn(
+            "min-h-screen flex flex-col items-center justify-center p-6 sm:p-12 transition-colors duration-500",
+            D ? "bg-premium-bg text-white" : "bg-white text-black"
+        )}>
             <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="w-full max-w-4xl flex flex-col items-center gap-12"
             >
-                <div style={styles.previewCard}>
-                    <video ref={videoRef} autoPlay playsInline muted style={styles.video} />
+                {/* Header Section */}
+                <div className="text-center space-y-3">
+                    <h1 className="text-4xl sm:text-5xl font-black tracking-tight">Ready to join?</h1>
+                    <p className={cn(
+                        "text-lg font-bold tracking-tight",
+                        D ? "opacity-40" : "text-gray-500"
+                    )}>
+                        Meeting Code: <span className="text-premium-accent">{roomId.toUpperCase()}</span>
+                    </p>
+                </div>
+
+                {/* Preview Card */}
+                <div className={cn(
+                    "w-full max-w-2xl aspect-video rounded-[32px] overflow-hidden relative shadow-2xl border-4 transition-all",
+                    D ? "bg-premium-surface border-white/5" : "bg-gray-100 border-gray-100"
+                )}>
+                    <video
+                        ref={videoRef}
+                        autoPlay
+                        playsInline
+                        muted
+                        className={cn(
+                            "w-full h-full object-cover transform rotate-Y-180 transition-opacity duration-500",
+                            videoOn ? "opacity-100" : "opacity-0"
+                        )}
+                        style={{ transform: 'rotateY(180deg)' }}
+                    />
+
                     {!videoOn && (
-                        <div style={{ position: 'absolute', inset: 0, backgroundColor: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                            <div style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: '#222', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <VideoOff size={32} color="#555" />
+                        <div className="absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-3xl">
+                            <div className="w-24 h-24 rounded-full bg-white/5 border border-white/10 flex items-center justify-center shadow-2xl">
+                                <VideoOff size={40} className="text-white/20" />
                             </div>
                         </div>
                     )}
-                    <div style={styles.overlay}>
+
+                    {/* Quick Controls overlay */}
+                    <div className="absolute bottom-8 left-1/2 -translate-x-1/2 flex items-center gap-4 z-10 px-6 py-4 rounded-3xl bg-black/20 backdrop-blur-xl border border-white/10">
                         <button
-                            style={{ ...styles.controlBtn, ...(!micOn ? styles.offBtn : {}) }}
                             onClick={() => setMicOn(!micOn)}
+                            className={cn(
+                                "w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90 border-none cursor-pointer",
+                                micOn
+                                    ? "bg-white/10 text-white hover:bg-white/20"
+                                    : "bg-premium-danger text-white shadow-lg shadow-premium-danger/40"
+                            )}
                         >
-                            {micOn ? <Mic size={20} /> : <MicOff size={20} />}
+                            {micOn ? <Mic size={24} /> : <MicOff size={24} />}
                         </button>
                         <button
-                            style={{ ...styles.controlBtn, ...(!videoOn ? styles.offBtn : {}) }}
                             onClick={() => setVideoOn(!videoOn)}
+                            className={cn(
+                                "w-14 h-14 rounded-full flex items-center justify-center transition-all active:scale-90 border-none cursor-pointer",
+                                videoOn
+                                    ? "bg-white/10 text-white hover:bg-white/20"
+                                    : "bg-premium-danger text-white shadow-lg shadow-premium-danger/40"
+                            )}
                         >
-                            {videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}
+                            {videoOn ? <VideoIcon size={24} /> : <VideoOff size={24} />}
                         </button>
                     </div>
                 </div>
-                <div style={styles.infoSection}>
-                    <h2 style={styles.title}>Ready to join?</h2>
-                    <p style={{ color: isDarkMode ? '#888' : '#666', fontWeight: 500 }}>Room: <span style={{ color: isDarkMode ? '#fff' : '#000', fontWeight: 700 }}>{roomId}</span></p>
-                    <div style={{ display: 'flex', gap: '1rem' }}>
-                        <button
-                            onClick={onBack}
-                            style={{ padding: '0 2rem', height: '52px', borderRadius: '99px', border: `1px solid ${isDarkMode ? '#333' : '#eee'}`, backgroundColor: 'transparent', color: 'inherit', fontWeight: 700, cursor: 'pointer' }}
-                        >
-                            Go back
-                        </button>
-                        <PremiumButton
-                            icon={Play}
-                            onClick={handleJoin}
-                            style={{ padding: '0 2.5rem', height: '52px' }}
-                        >
-                            Join meeting
-                        </PremiumButton>
-                    </div>
+
+                {/* Bottom Actions */}
+                <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
+                    <button
+                        onClick={onBack}
+                        className={cn(
+                            "h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 border-none cursor-pointer flex items-center gap-2",
+                            D ? "bg-white/5 text-white hover:bg-white/10" : "bg-gray-100 text-black hover:bg-gray-200"
+                        )}
+                    >
+                        <ArrowLeft size={16} /> Go Back
+                    </button>
+
+                    <PremiumButton
+                        icon={Play}
+                        onClick={handleJoin}
+                        className="h-14 px-12 text-sm"
+                    >
+                        Join Session
+                    </PremiumButton>
                 </div>
             </motion.div>
         </div>

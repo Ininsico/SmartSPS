@@ -2,7 +2,7 @@ import React from 'react';
 import { MoreVertical, Calendar, ArrowRight } from 'lucide-react';
 
 const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
-    const { title, participants, createdAt, roomId } = meeting;
+    const { title, participants, createdAt, roomId, hasNotes } = meeting;
 
     const styles = {
         card: {
@@ -58,7 +58,7 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
             width: '28px',
             height: '28px',
             borderRadius: '50%',
-            border: `2px solid ${isDarkMode ? '#1a0a0a' : '#fff'}`,
+            border: `2px solid ${isDarkMode ? '#000000' : '#fff'}`,
             marginLeft: '-8px',
             backgroundColor: isDarkMode ? '#333' : '#eee',
             objectFit: 'cover'
@@ -82,7 +82,7 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
             display: 'flex',
             alignItems: 'center',
             gap: '0.25rem',
-            color: '#e53e3e',
+            color: '#ef4444',
             fontSize: '0.75rem',
             fontWeight: 700,
             background: 'none',
@@ -107,9 +107,27 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
             <div style={styles.header}>
                 <div>
                     <h3 style={styles.title}>{title}</h3>
-                    <div style={styles.dateGroup}>
-                        <Calendar size={12} />
-                        <span>{formatDate(createdAt)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
+                        <div style={styles.dateGroup}>
+                            <Calendar size={12} />
+                            <span>{formatDate(createdAt)}</span>
+                        </div>
+                        {hasNotes && (
+                            <div style={{
+                                backgroundColor: '#ef4444',
+                                color: 'white',
+                                fontSize: '8px',
+                                fontWeight: 900,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                letterSpacing: '0.05em'
+                            }}>
+                                <span style={{ fontSize: '10px' }}>✦</span> AI NOTES
+                            </div>
+                        )}
                     </div>
                 </div>
                 <MoreVertical size={18} style={{ color: isDarkMode ? 'rgba(255,255,255,0.2)' : '#ccc' }} />

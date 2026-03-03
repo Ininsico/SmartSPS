@@ -2,7 +2,7 @@ import React from 'react';
 import { Home, LayoutGrid, Calendar, History, Settings, Video } from 'lucide-react';
 
 const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, activeSection }) => {
-    const darkMaroon = '#1a0a0a';
+    const darkMaroon = '#000000';
 
     const styles = {
         sidebar: {
@@ -33,8 +33,9 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, 
             justifyContent: 'center'
         },
         activeIcon: {
-            color: isDarkMode ? '#fff' : '#000',
-            backgroundColor: isDarkMode ? 'rgba(255,255,255,0.1)' : '#f5f5f5'
+            color: '#ffffff',
+            backgroundColor: '#ef4444',
+            boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
         }
     };
 

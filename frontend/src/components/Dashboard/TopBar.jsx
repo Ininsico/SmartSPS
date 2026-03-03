@@ -2,13 +2,13 @@ import React from 'react';
 import { Search, Bell, HelpCircle, ChevronRight, Zap, Sun, Moon, LogOut, Menu } from 'lucide-react';
 
 const TopBar = ({ isDarkMode, toggleTheme, onSignOut, onMenuClick }) => {
-    const darkMaroon = '#1a0a0a';
+    const darkMaroon = '#000000';
     const bc = isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)';
     return (
         <header className="topbar">
             <div className="left-section">
                 <button className="menu-btn" onClick={onMenuClick}><Menu size={20} /></button>
-                <Zap size={18} fill={isDarkMode ? "#fff" : "#000"} />
+                <Zap size={18} fill="#ef4444" className="text-red-500" />
                 <div className="breadcrumb">
                     <span>smartMeet</span>
                     <ChevronRight size={14} className="hide-mobile" />

@@ -19,8 +19,18 @@ export const getMeetingHistory = async (req, res) => {
             .select('roomId hostId title status scheduleTime startTime endTime participants createdAt')
             .lean();
 
-        setCachedHistory(userId, meetings);
-        res.json(meetings);
+        // Check which meetings have transcripts
+        const roomIds = meetings.map(m => m.roomId);
+        const transcripts = await mongoose.model('Transcript').find({ meetingId: { $in: roomIds } }).select('meetingId').lean();
+        const transcriptMap = new Set(transcripts.map(t => t.meetingId));
+
+        const meetingsWithNotes = meetings.map(m => ({
+            ...m,
+            hasNotes: transcriptMap.has(m.roomId)
+        }));
+
+        setCachedHistory(userId, meetingsWithNotes);
+        res.json(meetingsWithNotes);
     } catch {
         res.status(500).json({ error: 'Failed to fetch meeting history' });
     }

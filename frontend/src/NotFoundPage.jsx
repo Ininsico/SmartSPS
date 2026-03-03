@@ -1,129 +1,64 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Home, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Home, AlertCircle } from 'lucide-react';
 import PremiumButton from './PremiumButton';
 
 const NotFoundPage = () => {
-    return (
-        <div className="error-container">
-            <div className="error-content">
-                <motion.div
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="error-visual"
-                >
-                    <h1 className="glitch-text" data-text="404">404</h1>
-                    <div className="error-icon-wrapper">
-                        <AlertCircle size={48} strokeWidth={1} />
-                    </div>
-                </motion.div>
+  return (
+    <div className="min-h-screen w-full flex items-center justify-center bg-white relative overflow-hidden font-montserrat">
+      {/* Grid Pattern */}
+      <div className="absolute inset-0 pointer-events-none opacity-[0.03] bg-[radial-gradient(#000_1px,transparent_1px)]" style={{ backgroundSize: '32px 32px' }} />
 
-                <motion.div
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.2 }}
-                    className="error-text"
-                >
-                    <h2>Lost in space?</h2>
-                    <p>The page you are looking for doesn't exist or has been moved to another dimension.</p>
-                </motion.div>
-
-                <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 }}
-                    className="error-actions"
-                >
-                    <PremiumButton
-                        variant="primary"
-                        icon={Home}
-                        onClick={() => window.location.href = '/'}
-                    >
-                        Go back home
-                    </PremiumButton>
-                </motion.div>
+      <div className="text-center max-w-lg p-8 relative z-10">
+        <motion.div
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative mb-8"
+        >
+          <h1 className="text-[12rem] font-black leading-none tracking-[-0.08em] select-none text-black opacity-10">
+            404
+          </h1>
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+            <div className="w-24 h-24 rounded-full bg-white border border-gray-100 flex items-center justify-center shadow-2xl">
+              <AlertCircle size={48} className="text-premium-danger" strokeWidth={1.5} />
             </div>
+          </div>
+        </motion.div>
 
-            <style dangerouslySetInnerHTML={{
-                __html: `
-        .error-container {
-          height: 100vh;
-          width: 100vw;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: #ffffff;
-          background-image: radial-gradient(#00000005 1px, transparent 1px);
-          background-size: 32px 32px;
-          color: #000;
-          font-family: 'Montserrat', sans-serif;
-          overflow: hidden;
-        }
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.2 }}
+          className="space-y-4 mb-12"
+        >
+          <h2 className="text-4xl font-black tracking-tight text-black">Lost in space?</h2>
+          <p className="text-lg font-medium text-gray-500 leading-relaxed">
+            The page you are looking for doesn't exist or has been moved to another dimension.
+          </p>
+        </motion.div>
 
-        .error-content {
-          text-align: center;
-          max-width: 500px;
-          padding: 2rem;
-        }
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.4 }}
+          className="flex justify-center"
+        >
+          <PremiumButton
+            variant="primary"
+            icon={Home}
+            onClick={() => window.location.href = '/'}
+            className="h-14 px-10"
+          >
+            Go back home
+          </PremiumButton>
+        </motion.div>
+      </div>
 
-        .error-visual {
-          position: relative;
-          margin-bottom: 2rem;
-        }
-
-        .glitch-text {
-          font-size: 10rem;
-          font-weight: 900;
-          line-height: 1;
-          margin: 0;
-          letter-spacing: -10px;
-          position: relative;
-          color: #000;
-        }
-
-        .error-icon-wrapper {
-          position: absolute;
-          top: 50%;
-          left: 50%;
-          transform: translate(-50%, -50%);
-          background: #fff;
-          padding: 1rem;
-          border-radius: 50%;
-          border: 1px solid #f0f0f0;
-          box-shadow: 0 10px 30px rgba(0,0,0,0.05);
-        }
-
-        .error-text h2 {
-          font-size: 2.5rem;
-          font-weight: 800;
-          margin-bottom: 1rem;
-          letter-spacing: -1px;
-        }
-
-        .error-text p {
-          color: #666;
-          font-size: 1.1rem;
-          margin-bottom: 3rem;
-          line-height: 1.6;
-          font-weight: 500;
-        }
-
-        .error-actions {
-          display: flex;
-          justify-content: center;
-        }
-
-        @media (max-width: 768px) {
-          .glitch-text {
-            font-size: 6rem;
-          }
-          .error-text h2 {
-            font-size: 1.8rem;
-          }
-        }
-      `}} />
-        </div>
-    );
+      {/* Soft decorative blur */}
+      <div className="absolute -top-24 -left-24 w-96 h-96 bg-premium-accent/5 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute -bottom-24 -right-24 w-96 h-96 bg-premium-danger/5 rounded-full blur-3xl pointer-events-none" />
+    </div>
+  );
 };
 
 export default NotFoundPage;
