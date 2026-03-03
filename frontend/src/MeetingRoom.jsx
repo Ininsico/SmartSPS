@@ -6,6 +6,7 @@ import {
     MessageSquare, Users, Settings, PhoneOff, Hand, Shield,
     Sun, Moon, Copy, Check, Link2, X, UserPlus, Wifi, WifiOff,
     Send, Crown, Volume2, VolumeX,
+    ThumbsUp, Heart, Laugh, Zap, Flame, Star, PartyPopper, Sparkles,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserButton, useUser } from '@clerk/clerk-react';
@@ -15,14 +16,28 @@ const ICE_SERVERS = {
     iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
-        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'turn:openrelay.metered.ca:80', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:443?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+        { urls: 'turn:openrelay.metered.ca:80?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
     ],
     iceCandidatePoolSize: 10,
     bundlePolicy: 'max-bundle',
     rtcpMuxPolicy: 'require',
 };
 
-const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉', '🔥', '💯'];
+const REACTIONS = [
+    { key: 'like', Icon: ThumbsUp, label: 'Like', color: '#3b82f6' },
+    { key: 'love', Icon: Heart, label: 'Love', color: '#ef4444' },
+    { key: 'haha', Icon: Laugh, label: 'Haha', color: '#f59e0b' },
+    { key: 'wow', Icon: Zap, label: 'Wow', color: '#8b5cf6' },
+    { key: 'fire', Icon: Flame, label: 'Fire', color: '#f97316' },
+    { key: 'star', Icon: Star, label: 'Star', color: '#eab308' },
+    { key: 'party', Icon: PartyPopper, label: 'Party', color: '#ec4899' },
+    { key: 'magic', Icon: Sparkles, label: 'Magic', color: '#a855f7' },
+];
+
+const reactionByKey = Object.fromEntries(REACTIONS.map(r => [r.key, r]));
 
 const gradOver = {
     position: 'absolute', inset: 0,
@@ -58,17 +73,22 @@ const nameTag = {
 };
 
 /* ─── Floating Reaction ─── */
-const FloatingReaction = ({ emoji, name, onDone }) => {
+const FloatingReaction = ({ reactionKey, name, onDone }) => {
     useEffect(() => { const t = setTimeout(onDone, 3200); return () => clearTimeout(t); }, []);
+    const r = reactionByKey[reactionKey];
+    if (!r) return null;
+    const { Icon, color, label } = r;
     return (
         <motion.div
             initial={{ opacity: 1, y: 0, scale: 0.5 }}
-            animate={{ opacity: 0, y: -180, scale: 1.4 }}
+            animate={{ opacity: 0, y: -200, scale: 1.5 }}
             transition={{ duration: 3, ease: 'easeOut' }}
             style={{ position: 'fixed', bottom: 110, right: Math.random() * 200 + 40, zIndex: 900, pointerEvents: 'none', textAlign: 'center' }}
         >
-            <div style={{ fontSize: '2.5rem', lineHeight: 1 }}>{emoji}</div>
-            <div style={{ fontSize: '0.68rem', color: '#fff', background: 'rgba(0,0,0,0.5)', borderRadius: 6, padding: '1px 6px', marginTop: 2 }}>{name}</div>
+            <div style={{ width: 52, height: 52, borderRadius: '50%', background: `${color}22`, border: `2px solid ${color}66`, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto' }}>
+                <Icon size={26} color={color} strokeWidth={2.2} />
+            </div>
+            <div style={{ fontSize: '0.65rem', color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '2px 7px', marginTop: 5, fontWeight: 700 }}>{name}</div>
         </motion.div>
     );
 };
@@ -270,10 +290,20 @@ const ReactionPicker = ({ onPick, onClose, isDark, bd }) => (
         initial={{ opacity: 0, y: 12, scale: 0.88 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         exit={{ opacity: 0, y: 12, scale: 0.88 }}
-        style={{ position: 'absolute', bottom: 98, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 6, padding: '10px 14px', borderRadius: 16, boxShadow: '0 10px 32px rgba(0,0,0,0.35)', zIndex: 1100, background: isDark ? '#1a0a0a' : '#fff', border: `1px solid ${bd}` }}
+        style={{ position: 'absolute', bottom: 98, left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: 4, padding: '10px 12px', borderRadius: 18, boxShadow: '0 10px 32px rgba(0,0,0,0.35)', zIndex: 1100, background: isDark ? '#1a0a0a' : '#fff', border: `1px solid ${bd}` }}
     >
-        {REACTIONS.map(e => (
-            <button key={e} onClick={() => { onPick(e); onClose(); }} style={{ fontSize: '1.45rem', background: 'none', border: 'none', cursor: 'pointer', transition: 'transform 0.15s', padding: 2, borderRadius: 8, lineHeight: 1 }}>{e}</button>
+        {REACTIONS.map(({ key, Icon, label, color }) => (
+            <button
+                key={key}
+                title={label}
+                onClick={() => { onPick(key); onClose(); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '6px 7px', borderRadius: 10, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, transition: 'transform 0.15s, background 0.15s' }}
+                onMouseEnter={e => { e.currentTarget.style.transform = 'scale(1.25)'; e.currentTarget.style.background = `${color}18`; }}
+                onMouseLeave={e => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.background = 'none'; }}
+            >
+                <Icon size={22} color={color} strokeWidth={2.2} />
+                <span style={{ fontSize: '0.58rem', color, fontWeight: 700, letterSpacing: 0.3 }}>{label}</span>
+            </button>
         ))}
     </motion.div>
 );
@@ -466,7 +496,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             peersRef.current = peersRef.current.filter(p => p.socketId !== id);
             setPeers(prev => prev.filter(p => p.socketId !== id));
         });
-        socket.on('reaction', ({ from, userName, emoji }) => { if (from !== socket.id) setReactions(p => [...p, { id: Date.now(), emoji, name: userName }]); });
+        socket.on('reaction', ({ from, userName, emoji }) => { if (from !== socket.id) setReactions(p => [...p, { id: Date.now(), key: emoji, name: userName }]); });
         socket.on('chat-message', msg => { if (msg.from !== socket.id) { setMessages(p => [...p, msg]); if (panel !== 'chat') setUnread(u => u + 1); } });
         socket.on('peer-state-change', ({ socketId, muted, handRaised: rh }) => {
             setPeerStates(p => ({ ...p, [socketId]: { ...p[socketId], muted: muted ?? p[socketId]?.muted, handRaised: rh ?? p[socketId]?.handRaised } }));
@@ -541,7 +571,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         }
     };
     const toggleHand = () => { const n = !handRaised; setHandRaised(n); socketRef.current?.emit('raise-hand', { roomId, raised: n }); };
-    const sendReaction = e => { socketRef.current?.emit('reaction', { roomId, emoji: e }); setReactions(p => [...p, { id: Date.now(), emoji: e, name: 'You' }]); };
+    const sendReaction = key => { socketRef.current?.emit('reaction', { roomId, emoji: key }); setReactions(p => [...p, { id: Date.now(), key, name: 'You' }]); };
     const sendMessage = t => {
         const m = { id: Date.now(), from: 'me', userName: user?.fullName || 'You', userAvatar: user?.imageUrl, text: t };
         setMessages(p => [...p, m]);
@@ -795,7 +825,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
 
             {/* ── FLOATING REACTIONS ── */}
             <AnimatePresence>
-                {reactions.map(r => <FloatingReaction key={r.id} emoji={r.emoji} name={r.name} onDone={() => setReactions(p => p.filter(x => x.id !== r.id))} />)}
+                {reactions.map(r => <FloatingReaction key={r.id} reactionKey={r.key} name={r.name} onDone={() => setReactions(p => p.filter(x => x.id !== r.id))} />)}
             </AnimatePresence>
 
             {/* ── MODALS ── */}
