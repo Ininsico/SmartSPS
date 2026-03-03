@@ -278,6 +278,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                 <Sidebar
                     isDarkMode={isDarkMode}
                     activeSection={activeSection}
+                    onHomeClick={() => { setActiveSection('dashboard'); setSidebarOpen(false); }}
                     onScheduleClick={() => { setShowSchedule(true); setSidebarOpen(false); }}
                     onRecordingsClick={() => { setActiveSection('recordings'); setSidebarOpen(false); }}
                 />

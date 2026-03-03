@@ -1,7 +1,7 @@
 import React from 'react';
 import { Home, LayoutGrid, Calendar, History, Settings, Video } from 'lucide-react';
 
-const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, activeSection }) => {
+const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, activeSection }) => {
     const darkMaroon = '#1a0a0a';
 
     const styles = {
@@ -39,7 +39,7 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, activeSection
     };
 
     const menuItems = [
-        { icon: LayoutGrid, id: 'dashboard', active: activeSection === 'dashboard' || !activeSection, title: 'Dashboard', onClick: () => { } },
+        { icon: LayoutGrid, id: 'dashboard', active: activeSection === 'dashboard' || !activeSection, title: 'Dashboard', onClick: onHomeClick },
         { icon: Calendar, id: 'schedule', title: 'Schedule Meeting', onClick: onScheduleClick },
         { icon: Video, id: 'recordings', active: activeSection === 'recordings', title: 'Recordings', onClick: onRecordingsClick },
         { icon: History, id: 'history', title: 'History' },
@@ -47,7 +47,7 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, activeSection
 
     return (
         <aside style={styles.sidebar}>
-            <Home size={22} style={{ color: isDarkMode ? '#fff' : '#000', marginBottom: '2rem' }} />
+            <Home size={22} onClick={onHomeClick} style={{ color: isDarkMode ? '#fff' : '#000', marginBottom: '2rem', cursor: 'pointer' }} title="Home" />
 
             <div style={styles.iconGroup}>
                 {menuItems.map((item, idx) => (

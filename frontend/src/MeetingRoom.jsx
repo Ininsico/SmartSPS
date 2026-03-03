@@ -26,8 +26,8 @@ const gradOver = { position: 'absolute', inset: 0, background: 'linear-gradient(
 const videoFill = { width: '100%', height: '100%', objectFit: 'cover', display: 'block' };
 const nameTag = { position: 'absolute', bottom: 10, left: 10, display: 'flex', alignItems: 'center', gap: 5, background: 'rgba(0,0,0,0.62)', backdropFilter: 'blur(10px)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, padding: '3px 9px', color: '#fff', fontSize: '0.73rem', fontWeight: 700 };
 
-function tileStyle(handUp) {
-    return { position: 'relative', borderRadius: '1.1rem', overflow: 'hidden', background: '#0a0a0a', aspectRatio: '16/9', boxShadow: handUp ? '0 0 0 3px #f6c90e, 0 8px 32px rgba(0,0,0,0.55)' : '0 6px 24px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.07)', transition: 'box-shadow 0.25s', width: '100%' };
+function tileStyle(handUp, small = false) {
+    return { position: 'relative', borderRadius: small ? '0.7rem' : '1.1rem', overflow: 'hidden', background: '#0a0a0a', ...(small ? { height: '100%', width: '100%' } : { aspectRatio: '16/9', width: '100%' }), boxShadow: handUp ? '0 0 0 3px #f6c90e, 0 8px 32px rgba(0,0,0,0.55)' : '0 6px 24px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.07)', transition: 'box-shadow 0.25s' };
 }
 
 const FloatingReaction = ({ reactionKey, name, onDone }) => {
@@ -53,7 +53,15 @@ const RemoteVideoPlayer = ({ videoTrack, audioTrack }) => {
     return <div ref={videoRef} style={videoFill} />;
 };
 
-const UserTile = ({ user, isDark, isYou = false, peerState }) => {
+const ScreenSharePlayer = ({ track }) => {
+    const ref = useRef(null);
+    useEffect(() => {
+        if (track && ref.current) track.play(ref.current);
+    }, [track]);
+    return <div ref={ref} style={{ width: '100%', height: '100%', background: '#000' }} />;
+};
+
+const UserTile = ({ user, isDark, isYou = false, peerState, small = false }) => {
     const initials = user.userName ? user.userName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase() : '?';
     const isMuted = peerState?.muted ?? false;
     const handUp = peerState?.handRaised ?? false;
@@ -66,7 +74,7 @@ const UserTile = ({ user, isDark, isYou = false, peerState }) => {
     }, [isYou, user.videoTrack]);
 
     return (
-        <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={tileStyle(handUp)}>
+        <motion.div layout initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} style={tileStyle(handUp, small)}>
             {isYou ? (
                 <div ref={videoRef} style={videoFill} />
             ) : user.videoTrack ? (
@@ -75,15 +83,15 @@ const UserTile = ({ user, isDark, isYou = false, peerState }) => {
 
             {(!user.videoTrack || (isYou && !user.videoOn)) && (
                 <div style={{ position: 'absolute', inset: 0, background: isDark ? '#140c0c' : '#e5e5ea', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1 }}>
-                    <div style={{ width: 80, height: 80, borderRadius: '50%', overflow: 'hidden', background: isDark ? '#2a1a1a' : '#d0d0d8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.1)' }}>
-                        {user.userAvatar ? <img src={user.userAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: '1.8rem', fontWeight: 800, color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }}>{initials}</span>}
+                    <div style={{ width: small ? 44 : 80, height: small ? 44 : 80, borderRadius: '50%', overflow: 'hidden', background: isDark ? '#2a1a1a' : '#d0d0d8', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '3px solid rgba(255,255,255,0.1)' }}>
+                        {user.userAvatar ? <img src={user.userAvatar} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: small ? '1rem' : '1.8rem', fontWeight: 800, color: isDark ? 'rgba(255,255,255,0.3)' : 'rgba(0,0,0,0.3)' }}>{initials}</span>}
                     </div>
                 </div>
             )}
 
-            {handUp && <div style={{ position: 'absolute', top: 12, left: 12, fontSize: '1.4rem', zIndex: 10 }}>✋</div>}
-            <div style={nameTag}>
-                {user.userAvatar && <img src={user.userAvatar} alt="" style={{ width: 16, height: 16, borderRadius: '50%', objectFit: 'cover' }} />}
+            {handUp && <div style={{ position: 'absolute', top: 8, left: 8, fontSize: small ? '1rem' : '1.4rem', zIndex: 10 }}>✋</div>}
+            <div style={{ ...nameTag, fontSize: small ? '0.65rem' : '0.73rem', padding: small ? '2px 6px' : '3px 9px' }}>
+                {user.userAvatar && <img src={user.userAvatar} alt="" style={{ width: 14, height: 14, borderRadius: '50%', objectFit: 'cover' }} />}
                 <span>{user.userName || (isYou ? 'You' : 'Loading...')}</span>
                 {isMuted && <MicOff size={11} color="#fc8181" />}
             </div>
@@ -339,47 +347,70 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     useEffect(() => { window.__getClerkToken = getToken; }, [getToken]);
 
     const stopShare = async () => {
-        try {
-            if (screenTrack.current) {
-                await rtc.current.unpublish(screenTrack.current);
-                screenTrack.current.close();
-                screenTrack.current = null;
-            }
-            // Republish camera video
-            if (localTracks.current.video) {
-                await rtc.current.publish(localTracks.current.video);
-            }
-            setIsSharing(false);
-        } catch (err) { console.error('Stop share error:', err); }
+        const track = screenTrack.current;
+        screenTrack.current = null;
+        setIsSharing(false);
+        syncState({ muted: !micOn, handRaised, screenSharing: false });
+
+        if (track) {
+            // Suppress errors — track may already be ended (browser stop button)
+            await rtc.current?.unpublish(track).catch(() => { });
+            track.close();
+        }
+
+        // Always re-publish camera after screen share ends
+        if (localTracks.current.video) {
+            await rtc.current?.publish(localTracks.current.video).catch(() => { });
+        }
     };
 
     const toggleShare = async () => {
         if (isSharing) {
             await stopShare();
-        } else {
-            try {
-                // createScreenVideoTrack may return [videoTrack, audioTrack] if audio is shared
-                const result = await AgoraRTC.createScreenVideoTrack({}, 'disable');
-                const track = Array.isArray(result) ? result[0] : result;
-                // Unpublish camera first
-                if (localTracks.current.video) {
-                    await rtc.current.unpublish(localTracks.current.video);
-                }
-                await rtc.current.publish(track);
-                screenTrack.current = track;
-                setIsSharing(true);
-                // Auto-stop when user clicks 'Stop sharing' in browser UI
-                track.on('track-ended', () => stopShare());
-            } catch (err) {
-                if (err.name !== 'NotAllowedError') console.error('Screen share error:', err);
+            return;
+        }
+        try {
+            // 'disable' = no audio capture → always returns a single VideoTrack
+            const result = await AgoraRTC.createScreenVideoTrack(
+                { encoderConfig: '1080p_1', optimizationMode: 'detail' },
+                'disable'
+            );
+            const track = Array.isArray(result) ? result[0] : result;
+
+            // Unpublish camera before publishing screen
+            if (localTracks.current.video) {
+                await rtc.current.unpublish(localTracks.current.video).catch(() => { });
             }
+
+            await rtc.current.publish(track);
+            screenTrack.current = track;
+            setIsSharing(true);
+            syncState({ muted: !micOn, handRaised, screenSharing: true });
+
+            // Auto-stop when user hits browser's native "Stop sharing" button
+            track.on('track-ended', () => stopShare());
+        } catch (err) {
+            if (err.name !== 'NotAllowedError') console.error('Screen share error:', err);
+            // Ensure camera is restored if share failed mid-way
+            if (localTracks.current.video) {
+                await rtc.current?.publish(localTracks.current.video).catch(() => { });
+            }
+            setIsSharing(false);
         }
     };
+
 
     const D = isDarkMode;
     const bb = D ? 'rgba(12,8,8,0.97)' : 'rgba(255,255,255,0.97)';
     const bd = D ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.09)';
     const total = remoteUsers.length + 1;
+
+    // Detect who is sharing (local or remote)
+    const sharingPeerId = Object.entries(peerStates).find(([, s]) => s?.screenSharing)?.[0];
+    const sharingRemoteUser = remoteUsers.find(u => String(u.id) === String(sharingPeerId));
+    const anyoneSharing = isSharing || !!sharingRemoteUser;
+
+    const myData = { ...user, userName: user?.fullName, userAvatar: user?.imageUrl, videoTrack: localTracks.current.video, videoOn };
 
     return (
         <div style={{ height: '100vh', background: D ? '#090909' : '#f0f0f4', color: D ? '#f0f0f0' : '#1a1a1a', display: 'flex', flexDirection: 'column', overflow: 'hidden', fontFamily: 'Inter, sans-serif' }}>
@@ -398,9 +429,42 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
                 </div>
             </header>
 
-            <main style={{ flex: 1, padding: '1.25rem', display: 'grid', gridTemplateColumns: `repeat(${isMobile ? (total > 2 ? 2 : 1) : (total <= 2 ? 2 : 3)}, 1fr)`, gap: '1rem', alignContent: 'center' }}>
-                <UserTile isYou user={{ ...user, userName: user?.fullName, userAvatar: user?.imageUrl, videoTrack: localTracks.current.video, videoOn }} isDark={D} peerState={{ muted: !micOn, handRaised }} />
-                <AnimatePresence>{remoteUsers.map(u => <UserTile key={u.id} user={u} isDark={D} peerState={peerStates[u.id]} />)}</AnimatePresence>
+            <main style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', padding: '0.85rem', gap: '0.75rem', overflow: 'hidden' }}>
+                {anyoneSharing ? (
+                    <>
+                        {/* ── Spotlight: big screen share area ── */}
+                        <div style={{ flex: 1, position: 'relative', borderRadius: '1.1rem', overflow: 'hidden', background: '#000', minHeight: 0 }}>
+                            {isSharing
+                                ? <ScreenSharePlayer track={screenTrack.current} />
+                                : <RemoteVideoPlayer videoTrack={sharingRemoteUser?.videoTrack} />
+                            }
+                            <div style={{ ...nameTag, bottom: 14, left: 14, fontSize: '0.82rem', padding: '5px 13px', gap: 7 }}>
+                                <ScreenShare size={13} />
+                                <span>{isSharing ? 'You are presenting' : `${sharingRemoteUser?.userName || 'Someone'} is presenting`}</span>
+                            </div>
+                            <div style={gradOver} />
+                        </div>
+
+                        {/* ── Participant strip at bottom ── */}
+                        <div style={{ height: 130, display: 'flex', gap: '0.65rem', overflowX: 'auto', flexShrink: 0, scrollbarWidth: 'none' }}>
+                            {/* Local camera */}
+                            <div style={{ width: 210, flexShrink: 0 }}>
+                                <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} small />
+                            </div>
+                            {remoteUsers.map(u => (
+                                <div key={u.id} style={{ width: 210, flexShrink: 0 }}>
+                                    <UserTile user={u} isDark={D} peerState={peerStates[u.id]} small />
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                ) : (
+                    /* ── Normal equal grid layout ── */
+                    <div style={{ flex: 1, display: 'grid', gridTemplateColumns: `repeat(${isMobile ? (total > 2 ? 2 : 1) : (total <= 2 ? 2 : 3)}, 1fr)`, gap: '1rem', alignContent: 'center', height: '100%' }}>
+                        <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} />
+                        <AnimatePresence>{remoteUsers.map(u => <UserTile key={u.id} user={u} isDark={D} peerState={peerStates[u.id]} />)}</AnimatePresence>
+                    </div>
+                )}
             </main>
 
             <footer style={{ height: 82, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, background: bb, borderTop: `1px solid ${bd}` }}>
