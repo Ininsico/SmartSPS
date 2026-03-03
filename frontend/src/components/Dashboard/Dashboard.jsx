@@ -681,7 +681,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                                                     isDarkMode ? "bg-white/5 text-white hover:bg-white/10" : "bg-gray-100 text-black hover:bg-gray-200"
                                                 )}
                                             >
-                                                <Link2 size={16} className="text-premium-accent" />
+                                                <Link2 size={16} className={isDarkMode ? "text-white/60" : "text-black/60"} />
                                                 Join Meeting
                                             </button>
                                             <button
@@ -691,7 +691,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                                                     isDarkMode ? "bg-white/5 text-white hover:bg-white/10" : "bg-gray-100 text-black hover:bg-gray-200"
                                                 )}
                                             >
-                                                <Calendar size={16} className="text-premium-accent" />
+                                                <Calendar size={16} className={isDarkMode ? "text-white/60" : "text-black/60"} />
                                                 Schedule
                                             </button>
                                         </div>

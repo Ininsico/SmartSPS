@@ -46,8 +46,8 @@ const JoinModal = ({ onClose, isDarkMode, onJoin }) => {
           <button
             onClick={onClose}
             className={cn(
-              "p-2 rounded-full hover:bg-white/5 transition-colors border-none cursor-pointer",
-              isDarkMode ? "text-white" : "text-black"
+              "p-2 rounded-full transition-colors border-none cursor-pointer bg-transparent",
+              isDarkMode ? "text-white/40 hover:text-white" : "text-black/40 hover:text-black"
             )}
           >
             <X size={24} />

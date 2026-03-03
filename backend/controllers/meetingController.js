@@ -15,13 +15,16 @@ export const getMeetingHistory = async (req, res) => {
 
         recordMiss();
         const meetings = await Meeting.find({
-            $or: [{ hostId: userId }, { 'participants.userId': userId }]
+            $or: [
+                { hostId: userId },
+                { 'participants.userId': userId }
+            ]
         })
             .sort({ createdAt: -1 })
             .select('roomId hostId title status scheduleTime startTime endTime participants createdAt')
             .lean();
 
-        // Check which meetings have transcripts
+        console.log(`[HISTORY] Fetched ${meetings.length} meetings for ${userId}`);
         const roomIds = meetings.map(m => m.roomId);
         const transcripts = await mongoose.model('Transcript').find({ meetingId: { $in: roomIds } }).select('meetingId').lean();
         const transcriptMap = new Set(transcripts.map(t => t.meetingId));
@@ -69,6 +72,7 @@ export const joinMeeting = async (req, res) => {
         const socketId = req.headers['x-session-id'] || 'no-session';
 
         const result = await createOrJoinMeeting({ roomId, userId, userName, userAvatar, socketId, inviteUrl });
+        console.log(`[JOIN] User ${userId} joined room ${roomId}`);
         res.json(result);
     } catch (err) {
         console.error('Join meeting failed:', err.message);
@@ -78,95 +82,104 @@ export const joinMeeting = async (req, res) => {
 
 export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, inviteUrl }) => {
     const cached = getCachedRoom(roomId);
+    let meeting;
+
     if (cached) {
         recordHit();
-        const isHost = cached.hostId === userId;
         const needsActivate = cached.status === 'ended' || cached.status === 'scheduled';
-        const hasActiveHost = [...cached.participants.values()].some(p => p.isActive && cached.hostId === userId);
+        const isHost = cached.hostId === userId;
+
+        // Check if the original host is currenty active in the room
+        const hasActiveHost = [...cached.participants.values()].some(p => p.isActive && p.userId === cached.hostId);
 
         let newHostId = cached.hostId;
         let newHostSocketId = cached.hostSocketId;
 
-        if (needsActivate && !hasActiveHost) { newHostId = userId; newHostSocketId = socketId; }
-        if (isHost) newHostSocketId = socketId;
+        // Reassign host if room is being restarted or if the host rejoined
+        if (needsActivate && !hasActiveHost) {
+            newHostId = userId;
+            newHostSocketId = socketId;
+        } else if (isHost) {
+            newHostSocketId = socketId;
+        }
 
-        patchCachedParticipant(roomId, userId, { socketId, name: userName, avatar: userAvatar, isActive: true });
-        patchCachedRoom(roomId, {
-            status: needsActivate ? 'active' : cached.status,
-            hostId: newHostId,
-            hostSocketId: newHostSocketId,
-        });
-
-        const doc = await Meeting.findOneAndUpdate(
+        // Update DB atomically
+        meeting = await Meeting.findOneAndUpdate(
             { roomId },
-            { $set: { status: needsActivate ? 'active' : cached.status, hostId: newHostId, hostSocketId: newHostSocketId, endTime: needsActivate ? null : undefined } },
+            {
+                $set: {
+                    status: needsActivate ? 'active' : cached.status,
+                    hostId: newHostId,
+                    hostSocketId: newHostSocketId,
+                    endTime: needsActivate ? null : undefined
+                }
+            },
             { new: true }
         );
-        if (doc) {
-            const existingIdx = doc.participants.findIndex(p => p.userId === userId);
+
+        if (meeting) {
+            const existingIdx = meeting.participants.findIndex(p => p.userId === userId);
             if (existingIdx >= 0) {
                 await Meeting.updateOne(
                     { roomId, 'participants.userId': userId },
-                    { $set: { 'participants.$.socketId': socketId, 'participants.$.isActive': true, 'participants.$.leftAt': null } }
-                ).catch(() => { });
+                    { $set: { 'participants.$.socketId': socketId, 'participants.$.isActive': true, 'participants.$.leftAt': null, 'participants.$.name': userName, 'participants.$.avatar': userAvatar } }
+                );
             } else {
                 await Meeting.updateOne(
                     { roomId },
                     { $push: { participants: { userId, socketId, name: userName, avatar: userAvatar, isActive: true } } }
-                ).catch(() => { });
+                );
             }
+
+            // Sync cache
+            patchCachedParticipant(roomId, userId, { socketId, name: userName, avatar: userAvatar, isActive: true });
+            patchCachedRoom(roomId, {
+                status: meeting.status,
+                hostId: newHostId,
+                hostSocketId: newHostSocketId
+            });
         }
-
-        const mockMeeting = {
-            hostId: newHostId,
-            hostSocketId: newHostSocketId,
-            status: needsActivate ? 'active' : cached.status,
-            participants: [...cached.participants.entries()].map(([uid, p]) => ({
-                userId: uid, socketId: p.socketId, name: p.name, avatar: p.avatar, isActive: p.isActive,
-            })),
-        };
-        return { meeting: mockMeeting, isHost: newHostId === userId };
-    }
-
-    recordMiss();
-    let meeting = await Meeting.findOne({ roomId });
-
-    if (!meeting) {
-        meeting = await Meeting.create({
-            roomId,
-            hostId: userId,
-            hostSocketId: socketId,
-            inviteUrl,
-            title: `Meeting ${roomId.toUpperCase()}`,
-            status: 'active',
-            participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true }],
-        });
-        setCachedRoom(meeting);
-        invalidateAllHistory();
-        return { meeting, isHost: true };
-    }
-
-    const needsActivate = meeting.status === 'ended' || meeting.status === 'scheduled';
-    if (needsActivate) {
-        meeting.status = 'active';
-        meeting.endTime = undefined;
-        const hasActiveHost = meeting.participants.some(p => p.userId === meeting.hostId && p.isActive);
-        if (!hasActiveHost) { meeting.hostId = userId; meeting.hostSocketId = socketId; }
-    }
-
-    const existing = meeting.participants.find(p => p.userId === userId);
-    if (existing) {
-        existing.socketId = socketId;
-        existing.isActive = true;
-        existing.leftAt = undefined;
     } else {
-        meeting.participants.push({ userId, socketId, name: userName, avatar: userAvatar, isActive: true });
+        recordMiss();
+        meeting = await Meeting.findOne({ roomId });
+
+        if (!meeting) {
+            meeting = await Meeting.create({
+                roomId,
+                hostId: userId,
+                hostSocketId: socketId,
+                inviteUrl,
+                title: `Meeting ${roomId.toUpperCase()}`,
+                status: 'active',
+                participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true }],
+            });
+        } else {
+            const needsActivate = meeting.status === 'ended' || meeting.status === 'scheduled';
+            if (needsActivate) {
+                meeting.status = 'active';
+                meeting.endTime = undefined;
+                const hasActiveHost = meeting.participants.some(p => p.userId === meeting.hostId && p.isActive);
+                if (!hasActiveHost) { meeting.hostId = userId; meeting.hostSocketId = socketId; }
+            }
+
+            const existing = meeting.participants.find(p => p.userId === userId);
+            if (existing) {
+                existing.socketId = socketId;
+                existing.isActive = true;
+                existing.leftAt = undefined;
+                existing.name = userName;
+                existing.avatar = userAvatar;
+            } else {
+                meeting.participants.push({ userId, socketId, name: userName, avatar: userAvatar, isActive: true });
+            }
+
+            if (meeting.hostId === userId) meeting.hostSocketId = socketId;
+            await meeting.save();
+        }
+        setCachedRoom(meeting);
     }
 
-    if (meeting.hostId === userId) meeting.hostSocketId = socketId;
-
-    await meeting.save();
-    setCachedRoom(meeting);
+    invalidateAllHistory();
     return { meeting, isHost: meeting.hostId === userId };
 };
 

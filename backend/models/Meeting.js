@@ -30,5 +30,9 @@ const meetingSchema = new mongoose.Schema({
     }],
 }, { timestamps: true });
 
+meetingSchema.index({ hostId: 1 });
+meetingSchema.index({ 'participants.userId': 1 });
+meetingSchema.index({ status: 1 });
+
 const Meeting = mongoose.model('Meeting', meetingSchema);
 export default Meeting;
