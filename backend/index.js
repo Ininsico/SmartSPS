@@ -14,7 +14,6 @@ import * as ctrl from './controllers/meetingController.js';
 const app = express();
 const httpServer = createServer(app);
 
-// Use a dynamic origin helper to support credentials with any origin
 app.use(cors({
     origin: (origin, callback) => callback(null, true),
     credentials: true,
@@ -22,7 +21,7 @@ app.use(cors({
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token']
 }));
 
-app.options('*', (req, res) => {
+app.options('(.*)', (req, res) => {
     res.header('Access-Control-Allow-Origin', req.headers.origin || '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Clerk-Auth-Token');
@@ -32,12 +31,10 @@ app.options('*', (req, res) => {
 
 app.use(express.json());
 
-// MongoDB connection
 mongoose.connect(process.env.MONGODB_URI)
     .then(() => console.log('✅ MongoDB connected'))
     .catch(err => console.log('❌ MongoDB error:', err));
 
-// Socket.io with CORS mirroring
 const io = new Server(httpServer, {
     cors: {
         origin: (origin, callback) => callback(null, true),
@@ -47,7 +44,6 @@ const io = new Server(httpServer, {
     path: '/socket.io'
 });
 
-// MongoDB adapter for Socket.io
 const COLLECTION_NAME = 'socket.io-adapter';
 const mongoClient = new MongoClient(process.env.MONGODB_URI);
 mongoClient.connect().then(() => {
@@ -58,11 +54,9 @@ mongoClient.connect().then(() => {
     console.log('✅ Socket.io adapter ready');
 }).catch(err => console.log('❌ Adapter error:', err));
 
-// Routes
 app.use('/api/meetings', meetingRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 
-// Socket.io events
 io.on('connection', (socket) => {
     console.log('🔌 User connected:', socket.id);
 
@@ -184,7 +178,6 @@ if (process.env.NODE_ENV !== 'production') {
     httpServer.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
 }
 
-// Vercel Bridging for Socket.io signalling
 app.all('/socket.io/(.*)', (req, res) => {
     io.engine.handleRequest(req, res);
 });
