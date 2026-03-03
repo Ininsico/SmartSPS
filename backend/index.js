@@ -34,6 +34,17 @@ app.use('/api/meetings', meetingRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
 app.get('/cache-stats', (req, res) => res.json(getCacheStats()));
+app.get('/debug', (req, res) => res.json({
+    env: {
+        MONGODB_URI: !!process.env.MONGODB_URI,
+        CLERK_SECRET_KEY: !!process.env.CLERK_SECRET_KEY,
+        FRONTEND_URL: process.env.FRONTEND_URL || 'NOT SET',
+        NODE_ENV: process.env.NODE_ENV || 'NOT SET',
+    },
+    mongo: mongoose.connection.readyState,
+    // mongo states: 0=disconnected 1=connected 2=connecting 3=disconnecting
+}));
+
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
