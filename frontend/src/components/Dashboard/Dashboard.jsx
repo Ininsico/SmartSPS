@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Users as UsersIcon } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Menu } from 'lucide-react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MeetingCard from './MeetingCard';
@@ -9,12 +9,10 @@ import { useAuth, useUser } from '@clerk/clerk-react';
 
 const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
     if (!meeting) return null;
-    const darkMaroon = '#1a0a0a';
     const bg = isDarkMode ? '#1e1a1a' : '#fff';
     const tc = isDarkMode ? '#fff' : '#000';
     const sc = isDarkMode ? '#888' : '#666';
     const bc = isDarkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
-
     return (
         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={onClose}>
             <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }} onClick={e => e.stopPropagation()} style={{ background: bg, width: '100%', maxWidth: '500px', borderRadius: '24px', padding: '2rem', border: `1px solid ${bc}`, color: tc, boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
@@ -30,7 +28,7 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                     <div>
                         <label style={{ fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', color: sc, letterSpacing: '1px', display: 'block', marginBottom: '0.4rem' }}>Room ID</label>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', background: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f5f5f7', padding: '0.75rem 1rem', borderRadius: '12px', border: `1px solid ${bc}` }}>
-                            <code style={{ fontSize: '1rem', fontWeight: 700, flex: 1 }}>{meeting.roomId}</code>
+                            <code style={{ fontSize: '1rem', fontWeight: 700, flex: 1, wordBreak: 'break-all' }}>{meeting.roomId}</code>
                             <button onClick={() => navigator.clipboard.writeText(meeting.roomId)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: sc }} title="Copy ID"><Clipboard size={18} /></button>
                         </div>
                     </div>
@@ -62,7 +60,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
     const [meetings, setMeetings] = useState([]);
     const [loading, setLoading] = useState(true);
     const [selectedMeeting, setSelectedMeeting] = useState(null);
-
+    const [sidebarOpen, setSidebarOpen] = useState(false);
     const { getToken } = useAuth();
     const { user } = useUser();
     const darkMaroon = '#1a0a0a';
@@ -76,11 +74,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                 });
                 const data = await response.json();
                 setMeetings(Array.isArray(data) ? data : []);
-            } catch (err) {
-                console.error('Failed to fetch history:', err);
-            } finally {
-                setLoading(false);
-            }
+            } catch (err) { console.error('Failed to fetch history:', err); } finally { setLoading(false); }
         };
         if (user) fetchHistory();
     }, [user, getToken]);
@@ -91,71 +85,90 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
     }, [isDarkMode]);
 
     const filteredMeetings = useMemo(() => {
-        return meetings.filter(m =>
-            m.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            m.roomId?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
+        return meetings.filter(m => m.title?.toLowerCase().includes(searchQuery.toLowerCase()) || m.roomId?.toLowerCase().includes(searchQuery.toLowerCase()));
     }, [meetings, searchQuery]);
 
-    const styles = {
-        container: { height: '100vh', width: '100vw', display: 'flex', backgroundColor: isDarkMode ? darkMaroon : '#ffffff', color: isDarkMode ? '#ffffff' : '#000000', fontFamily: "'Montserrat', sans-serif", overflow: 'hidden', transition: 'background-color 0.3s ease' },
-        mainContent: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' },
-        scrollArea: { flex: 1, overflowY: 'auto', padding: '2.5rem 3.5rem', display: 'flex', flexDirection: 'column', gap: '2.5rem' },
-        emptyState: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '400px', gap: '1rem', color: isDarkMode ? 'rgba(255,255,255,0.2)' : '#ccc' },
-        grid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1.5rem' }
-    };
-
     return (
-        <div style={styles.container}>
-            <Sidebar isDarkMode={isDarkMode} />
-            <div style={styles.mainContent}>
-                <TopBar isDarkMode={isDarkMode} toggleTheme={() => setIsDarkMode(!isDarkMode)} onSignOut={onSignOut} />
-                <div style={styles.scrollArea}>
-                    <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <h1 style={{ fontSize: '2.25rem', fontWeight: '800', letterSpacing: '-1.5px', margin: 0 }}>Meetings</h1>
-                        <PremiumButton variant="primary" icon={Plus} onClick={onNewMeeting} style={{ height: '42px', padding: '0 1.25rem', fontSize: '0.85rem' }}>
+        <div className="dashboard-root">
+            <div className={`sidebar-container ${sidebarOpen ? 'open' : ''}`}>
+                <Sidebar isDarkMode={isDarkMode} />
+            </div>
+            {sidebarOpen && <div className="sidebar-overlay" onClick={() => setSidebarOpen(false)} />}
+            <div className="main-content">
+                <TopBar isDarkMode={isDarkMode} toggleTheme={() => setIsDarkMode(!isDarkMode)} onSignOut={onSignOut} onMenuClick={() => setSidebarOpen(true)} />
+                <div className="scroll-area">
+                    <section className="section-header">
+                        <h1 className="title">Meetings</h1>
+                        <PremiumButton variant="primary" icon={Plus} onClick={onNewMeeting} className="new-meeting-btn">
                             New meeting
                         </PremiumButton>
                     </section>
-                    <section style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
-                        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#fcfcfc', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#eee'}`, borderRadius: '8px', padding: '0 0.75rem', height: '40px', width: '300px' }}>
-                                <Search size={16} color={isDarkMode ? "rgba(255,255,255,0.2)" : "#ccc"} />
-                                <input type="text" placeholder="Search meetings..." style={{ backgroundColor: 'transparent', border: 'none', color: 'inherit', fontSize: '0.85rem', padding: '0.5rem', width: '100%', outline: 'none' }} value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
-                            </div>
+                    <section className="filters-section">
+                        <div className="search-box">
+                            <Search size={16} color={isDarkMode ? "rgba(255,255,255,0.2)" : "#ccc"} />
+                            <input type="text" placeholder="Search meetings..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                         </div>
-                        <div style={{ display: 'flex', borderRadius: '8px', overflow: 'hidden', border: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#eee'}` }}>
-                            <button onClick={() => setViewType('grid')} style={{ padding: '0 0.85rem', height: '40px', border: 'none', cursor: 'pointer', backgroundColor: viewType === 'grid' ? (isDarkMode ? 'rgba(255,255,255,0.1)' : '#f5f5f5') : 'transparent', color: isDarkMode ? '#fff' : '#000' }}>
-                                <LayoutGrid size={16} />
-                            </button>
-                            <button onClick={() => setViewType('list')} style={{ padding: '0 0.85rem', height: '40px', border: 'none', cursor: 'pointer', backgroundColor: viewType === 'list' ? (isDarkMode ? 'rgba(255,255,255,0.1)' : '#f5f5f5') : 'transparent', color: isDarkMode ? '#fff' : '#000' }}>
-                                <List size={16} />
-                            </button>
+                        <div className="view-toggle">
+                            <button onClick={() => setViewType('grid')} className={viewType === 'grid' ? 'active' : ''}><LayoutGrid size={16} /></button>
+                            <button onClick={() => setViewType('list')} className={viewType === 'list' ? 'active' : ''}><List size={16} /></button>
                         </div>
                     </section>
                     {loading ? (
-                        <div style={styles.emptyState}>
+                        <div className="empty-state">
                             <Loader2 size={40} className="animate-spin" />
                             <p>Fetching your universe...</p>
                         </div>
                     ) : filteredMeetings.length === 0 ? (
-                        <div style={styles.emptyState}>
+                        <div className="empty-state">
                             <CalendarOff size={48} />
-                            <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: isDarkMode ? '#fff' : '#000' }}>{searchQuery ? 'No matching meetings' : 'No meetings found'}</h2>
-                            <p>{searchQuery ? 'Try a different search term.' : 'Your history is looking a bit empty. Start a new meeting to fill it up!'}</p>
+                            <h2>{searchQuery ? 'No matching meetings' : 'No meetings found'}</h2>
+                            <p>{searchQuery ? 'Try a different search term.' : 'Your history is looking a bit empty.'}</p>
                         </div>
                     ) : (
-                        <section style={styles.grid}>
+                        <div className={`meetings-grid ${viewType}`}>
                             {filteredMeetings.map((meeting) => (
                                 <MeetingCard key={meeting._id} meeting={meeting} isDarkMode={isDarkMode} onShowDetails={() => setSelectedMeeting(meeting)} />
                             ))}
-                        </section>
+                        </div>
                     )}
                 </div>
             </div>
             <AnimatePresence>
                 {selectedMeeting && <MeetingDetailModal meeting={selectedMeeting} onClose={() => setSelectedMeeting(null)} isDarkMode={isDarkMode} />}
             </AnimatePresence>
+            <style dangerouslySetInnerHTML={{
+                __html: `
+                .dashboard-root { height: 100vh; width: 100vw; display: flex; background: ${isDarkMode ? darkMaroon : '#ffffff'}; color: ${isDarkMode ? '#fff' : '#000'}; overflow: hidden; }
+                .sidebar-container { height: 100%; transition: transform 0.3s ease; z-index: 1001; }
+                .main-content { flex: 1; display: flex; flexDirection: column; overflow: hidden; }
+                .scroll-area { flex: 1; overflow-y: auto; padding: 2.5rem 3.5rem; display: flex; flex-direction: column; gap: 2.5rem; }
+                .section-header { display: flex; justify-content: space-between; align-items: center; }
+                .title { font-size: 2.25rem; font-weight: 800; letter-spacing: -1.5px; margin: 0; }
+                .filters-section { display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; }
+                .search-box { display: flex; align-items: center; background: ${isDarkMode ? 'rgba(255,255,255,0.05)' : '#fcfcfc'}; border: 1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#eee'}; border-radius: 8px; padding: 0 0.75rem; height: 40px; width: 300px; }
+                .search-box input { background: transparent; border: none; color: inherit; fontSize: 0.85rem; padding: 0.5rem; width: 100%; outline: none; }
+                .view-toggle { display: flex; border-radius: 8px; overflow: hidden; border: 1px solid ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#eee'}; }
+                .view-toggle button { padding: 0 0.85rem; height: 40px; border: none; cursor: pointer; background: transparent; color: inherit; }
+                .view-toggle button.active { background: ${isDarkMode ? 'rgba(255,255,255,0.1)' : '#f5f5f5'}; }
+                .meetings-grid { display: grid; gap: 1.5rem; }
+                .meetings-grid.grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+                .meetings-grid.list { grid-template-columns: 1fr; }
+                .empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 400px; gap: 1rem; opacity: 0.4; }
+                @media (max-width: 1024px) {
+                    .scroll-area { padding: 1.5rem 2rem; }
+                    .title { font-size: 1.75rem; }
+                }
+                @media (max-width: 768px) {
+                    .sidebar-container { position: fixed; transform: translateX(-100%); left: 0; }
+                    .sidebar-container.open { transform: translateX(0); }
+                    .sidebar-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 1000; }
+                    .scroll-area { padding: 1rem; gap: 1.5rem; }
+                    .title { font-size: 1.5rem; }
+                    .search-box { width: 100%; }
+                    .section-header { flex-direction: column; align-items: flex-start; gap: 1rem; }
+                    .new-meeting-btn { width: 100%; }
+                }
+            ` }} />
         </div>
     );
 };
