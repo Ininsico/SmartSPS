@@ -34,7 +34,15 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST']
     },
     path: '/socket.io',
-    transports: ['polling', 'websocket']
+    transports: ['websocket', 'polling'],   // WebSocket first — matches client
+    // Compression adds CPU latency on tiny real-time packets; disable it
+    perMessageDeflate: false,
+    httpCompression: false,
+    // Fast heartbeat: detect dead connections in 10 s, not the default 25 s
+    pingInterval: 10000,
+    pingTimeout: 5000,
+    // Upgrade timeout: how long to wait for WS upgrade before falling back
+    upgradeTimeout: 10000,
 });
 
 const COLLECTION_NAME = 'socket.io-adapter';

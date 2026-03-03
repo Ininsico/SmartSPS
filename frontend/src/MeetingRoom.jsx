@@ -6,7 +6,18 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { UserButton, useUser } from '@clerk/clerk-react';
 import { mediaManager } from './mediaManager';
 
-const ICE_SERVERS = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }, { urls: 'stun:stun2.l.google.com:19302' }, { urls: 'stun:stun3.l.google.com:19302' }, { urls: 'stun:global.stun.twilio.com:3478' }, { urls: 'stun:stun.services.mozilla.com' }] };
+// Optimised ICE: keep Google STUNs but lead with the fastest ones
+const ICE_SERVERS = {
+    iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+    ],
+    iceCandidatePoolSize: 10,          // pre-gather candidates before offer
+    bundlePolicy: 'max-bundle',        // bundle all tracks on one transport
+    rtcpMuxPolicy: 'require',          // mux RTCP with RTP — saves a port
+};
+
 const REACTIONS = ['👍', '❤️', '😂', '😮', '👏', '🎉', '🔥', '💯'];
 
 const tileBase = { position: 'relative', borderRadius: '1.25rem', overflow: 'hidden', background: '#0f0f0f', aspectRatio: '16/9', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.07)', transition: 'box-shadow 0.2s' };
@@ -201,7 +212,33 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     }, []);
     const initMedia = async () => {
         try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' }, audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, googEchoCancellation: true, googAutoGainControl: true, googNoiseSuppression: true, googHighpassFilter: true, sampleRate: 48000 } });
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 },
+                    facingMode: 'user',
+                },
+                audio: {
+                    // ── Echo / noise / gain ──────────────────────────────
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    // ── Voice-optimised codec settings ───────────────────
+                    channelCount: 1,          // mono — halves bitrate, better AEC
+                    sampleRate: 48000,        // Opus native rate
+                    sampleSize: 16,
+                    latency: 0.01,            // hint 10 ms preferred latency
+                    // ── Legacy Chrome hints (still help in some versions) ─
+                    googEchoCancellation: true,
+                    googAutoGainControl: true,
+                    googNoiseSuppression: true,
+                    googHighpassFilter: true,
+                    googExperimentalEchoCancellation: true,
+                    googExperimentalNoiseSuppression: true,
+                },
+            });
+
             if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
             streamRef.current = stream; mediaManager.registerStream(stream); stream.getAudioTracks().forEach(t => t.enabled = micOn); stream.getVideoTracks().forEach(t => t.enabled = videoOn);
             if (localRef.current) localRef.current.srcObject = stream; connectSocket(stream);
@@ -209,7 +246,14 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     };
     const connectSocket = (stream) => {
         const socketUrl = import.meta.env.VITE_SOCKET_URL || '';
-        const socket = io(socketUrl, { transports: ['polling', 'websocket'], reconnectionAttempts: Infinity });
+        const socket = io(socketUrl, {
+            // Prefer WebSocket immediately — skip the polling upgrade handshake
+            // which adds 300-600 ms of unnecessary latency on every connect.
+            transports: ['websocket', 'polling'],
+            reconnectionAttempts: Infinity,
+            reconnectionDelay: 1000,
+            timeout: 10000,
+        });
         socketRef.current = socket;
         const join = () => {
             // Use a retry in case Clerk hasn't loaded user yet
@@ -235,9 +279,70 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         socket.on('force-muted', ({ byName }) => { setMicOn(false); streamRef.current?.getAudioTracks().forEach(t => t.enabled = false); socket.emit('state-change', { roomId, muted: true }); showToast(`Muted by ${byName} 🤫`); });
     };
     const makePeer = useCallback(({ initiator, target, socket }) => {
-        const peer = new Peer({ initiator, trickle: true, config: ICE_SERVERS, stream: streamRef.current });
-        peer.on('signal', s => socket.emit('signal', { to: target, signal: s })); return peer;
+        const peer = new Peer({
+            initiator,
+            trickle: true,
+            config: ICE_SERVERS,
+            stream: streamRef.current,
+            // ── SDP transform: force Opus with low-latency CBR settings ──
+            sdpTransform: (sdp) => {
+                // Force Opus codec and set preferred parameters
+                return sdp
+                    // Prefer Opus (111) over other audio codecs
+                    .replace(
+                        /m=audio (\d+) UDP\/TLS\/RTP\/SAVPF ([\d ]+)/,
+                        (match, port, codecs) => {
+                            const parts = codecs.split(' ');
+                            const opusIdx = parts.indexOf('111');
+                            if (opusIdx > 0) {
+                                parts.splice(opusIdx, 1);
+                                parts.unshift('111');
+                            }
+                            return `m=audio ${port} UDP/TLS/RTP/SAVPF ${parts.join(' ')}`;
+                        }
+                    )
+                    // Opus: stereo=0 (mono), useinbandfec=1 (packet loss recovery),
+                    //        usedtx=1 (silence suppression saves bandwidth),
+                    //        cbr=1 (constant bitrate — prevents jitter spikes),
+                    //        maxplaybackrate=48000
+                    .replace(
+                        /a=fmtp:111 .*/,
+                        'a=fmtp:111 minptime=10;useinbandfec=1;usedtx=1;cbr=1;stereo=0;sprop-stereo=0;maxplaybackrate=48000'
+                    )
+                    // Cap audio bitrate to 32 kbps — plenty for voice, prevents congestion
+                    .replace(/b=AS:(\d+)\r\n/g, 'b=AS:32\r\n');
+            },
+        });
+
+        peer.on('signal', s => socket.emit('signal', { to: target, signal: s }));
+
+        // ── After connection, cap bitrates via RTCRtpSender ──────────
+        peer.on('connect', async () => {
+            try {
+                const pc = peer._pc;
+                if (!pc) return;
+                for (const sender of pc.getSenders()) {
+                    const params = sender.getParameters();
+                    if (!params.encodings) params.encodings = [{}];
+                    if (sender.track?.kind === 'video') {
+                        // Cap video at 800 kbps max — reduces buffering/lag
+                        params.encodings[0].maxBitrate = 800_000;
+                        params.encodings[0].maxFramerate = 30;
+                        params.encodings[0].networkPriority = 'high';
+                    } else if (sender.track?.kind === 'audio') {
+                        // Hard cap audio at 40 kbps
+                        params.encodings[0].maxBitrate = 40_000;
+                        params.encodings[0].priority = 'high';
+                        params.encodings[0].networkPriority = 'high';
+                    }
+                    await sender.setParameters(params);
+                }
+            } catch (_) { /* some browsers don't support setParameters */ }
+        });
+
+        return peer;
     }, []);
+
     const hangup = () => { onLeave(); };
     const toggleMic = () => { const next = !micOn; setMicOn(next); streamRef.current?.getAudioTracks().forEach(t => t.enabled = next); socketRef.current?.emit('state-change', { roomId, muted: !next }); };
     const toggleVideo = async () => { const next = !videoOn; setVideoOn(next); if (!next) { streamRef.current?.getVideoTracks().forEach(t => { t.stop(); t.enabled = false; }); } else { try { const ns = await navigator.mediaDevices.getUserMedia({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } }); const t = ns.getVideoTracks()[0]; const b = streamRef.current; if (b) { b.getVideoTracks().forEach(v => { v.stop(); b.removeTrack(v); }); b.addTrack(t); if (localRef.current) localRef.current.srcObject = b; peersRef.current.forEach(({ peer }) => peer._pc?.getSenders().find(s => s.track?.kind === 'video')?.replaceTrack(t)); } } catch (_) { setVideoOn(false); } } };

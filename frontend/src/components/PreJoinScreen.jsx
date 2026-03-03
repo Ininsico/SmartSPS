@@ -20,7 +20,17 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
                     audio: {
                         echoCancellation: true,
                         noiseSuppression: true,
-                        autoGainControl: true
+                        autoGainControl: true,
+                        channelCount: 1,
+                        sampleRate: 48000,
+                        sampleSize: 16,
+                        latency: 0.01,
+                        googEchoCancellation: true,
+                        googAutoGainControl: true,
+                        googNoiseSuppression: true,
+                        googHighpassFilter: true,
+                        googExperimentalEchoCancellation: true,
+                        googExperimentalNoiseSuppression: true,
                     }
                 });
                 if (!isMounted) {
