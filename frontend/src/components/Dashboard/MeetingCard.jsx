@@ -1,8 +1,8 @@
 import React from 'react';
-import { MoreVertical, Users, Calendar, Clock, ArrowRight } from 'lucide-react';
+import { MoreVertical, Calendar, ArrowRight } from 'lucide-react';
 
-const MeetingCard = ({ meeting, isDarkMode }) => {
-    const { title, participants, createdAt, status, roomId } = meeting;
+const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
+    const { title, participants, createdAt, roomId } = meeting;
 
     const styles = {
         card: {
@@ -77,6 +77,23 @@ const MeetingCard = ({ meeting, isDarkMode }) => {
             textTransform: 'uppercase',
             backgroundColor: isDarkMode ? 'rgba(255,255,255,0.05)' : '#f5f5f5',
             color: isDarkMode ? 'rgba(255,255,255,0.4)' : '#888'
+        },
+        detailsBtn: {
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.25rem',
+            color: '#e53e3e',
+            fontSize: '0.75rem',
+            fontWeight: 700,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: '4px 8px',
+            borderRadius: '8px',
+            transition: 'background 0.2s',
+            '&:hover': {
+                background: isDarkMode ? 'rgba(229, 62, 62, 0.1)' : 'rgba(229, 62, 62, 0.05)'
+            }
         }
     };
 
@@ -86,7 +103,7 @@ const MeetingCard = ({ meeting, isDarkMode }) => {
     };
 
     return (
-        <div style={styles.card}>
+        <div style={styles.card} onClick={onShowDetails}>
             <div style={styles.header}>
                 <div>
                     <h3 style={styles.title}>{title}</h3>
@@ -119,11 +136,17 @@ const MeetingCard = ({ meeting, isDarkMode }) => {
             </div>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'auto' }}>
-                <span style={styles.footerBadge}>ID: {roomId.substring(0, 8)}</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', color: isDarkMode ? '#888' : '#888', fontSize: '0.75rem', fontWeight: 600 }}>
+                <span style={styles.footerBadge}>ID: {roomId?.substring(0, 8)}</span>
+                <button
+                    style={styles.detailsBtn}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        onShowDetails();
+                    }}
+                >
                     <span>Details</span>
                     <ArrowRight size={14} />
-                </div>
+                </button>
             </div>
         </div>
     );
