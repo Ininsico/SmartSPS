@@ -301,10 +301,25 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     const initMedia = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({
-                video: { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 }, facingMode: 'user' },
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+                video: {
+                    width: { ideal: 1280, max: 1920 },
+                    height: { ideal: 720, max: 1080 },
+                    frameRate: { ideal: 30, max: 30 },
+                    facingMode: 'user',
+                },
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    channelCount: 1,
+                    sampleRate: 48000,
+                    latency: 0.01,
+                },
             });
             if (!mountedRef.current) { stream.getTracks().forEach(t => t.stop()); return; }
+            // Content hints help the encoder pick the right strategy
+            stream.getVideoTracks().forEach(t => { t.contentHint = 'motion'; });
+            stream.getAudioTracks().forEach(t => { t.contentHint = 'speech'; });
             streamRef.current = stream;
             mediaManager.registerStream(stream);
             stream.getAudioTracks().forEach(t => t.enabled = micOn);
@@ -314,11 +329,42 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         } catch (err) { console.error('Media error:', err); }
     };
 
+    /* ── optimise encoding after connection is live ── */
+    const applyEncodings = async (pc, { isScreen = false } = {}) => {
+        for (const sender of pc.getSenders()) {
+            if (!sender.track) continue;
+            try {
+                const params = sender.getParameters();
+                if (!params.encodings?.length) params.encodings = [{}];
+                const enc = params.encodings[0];
+                if (sender.track.kind === 'video') {
+                    enc.maxBitrate = isScreen ? 2_500_000 : 1_200_000;
+                    enc.maxFramerate = isScreen ? 15 : 30;
+                    enc.networkPriority = 'high';
+                } else if (sender.track.kind === 'audio') {
+                    enc.maxBitrate = 64_000;  // 64 kbps Opus — plenty for voice
+                    enc.priority = 'high';
+                    enc.networkPriority = 'high';
+                }
+                await sender.setParameters(params);
+            } catch (_) { }
+        }
+    };
+
+    /* ── drop a ghost peer by userId before adding a fresh one ── */
+    const evictByUserId = (userId) => {
+        const oldSid = Object.entries(metaRef.current).find(([, m]) => m.userId === userId)?.[0];
+        if (oldSid) {
+            pcsRef.current[oldSid]?.close();
+            delete pcsRef.current[oldSid];
+            delete metaRef.current[oldSid];
+            setPeers(prev => prev.filter(p => p.socketId !== oldSid));
+        }
+    };
+
     /* ── create one RTCPeerConnection ── */
     const createPC = (socketId, isInitiator) => {
-        if (pcsRef.current[socketId]) {
-            pcsRef.current[socketId].close();
-        }
+        if (pcsRef.current[socketId]) pcsRef.current[socketId].close();
         const pc = new RTCPeerConnection(ICE_SERVERS);
         pcsRef.current[socketId] = pc;
 
@@ -329,26 +375,38 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
 
         /* relay ICE candidates through socket */
         pc.onicecandidate = ({ candidate }) => {
-            if (candidate) {
-                socketRef.current?.emit('signal', { to: socketId, signal: { type: 'candidate', candidate } });
-            }
+            if (candidate) socketRef.current?.emit('signal', { to: socketId, signal: { type: 'candidate', candidate } });
         };
 
         /* receive remote stream */
         pc.ontrack = ({ streams }) => {
-            if (!streams[0]) return;
-            const stream = streams[0];
-            if (!mountedRef.current) return;
-            setPeers(prev => prev.map(p => p.socketId === socketId ? { ...p, stream, connState: 'connected' } : p));
+            if (!streams[0] || !mountedRef.current) return;
+            setPeers(prev => prev.map(p => p.socketId === socketId ? { ...p, stream: streams[0], connState: 'connected' } : p));
         };
 
-        /* track connection state */
+        /* connection state → update tile badge; recover from failure */
         pc.onconnectionstatechange = () => {
             const s = pc.connectionState;
-            const connState = s === 'connected' ? 'connected' : (s === 'failed' || s === 'disconnected' || s === 'closed') ? 'disconnected' : 'connecting';
-            if (!mountedRef.current) return;
-            setPeers(prev => prev.map(p => p.socketId === socketId ? { ...p, connState } : p));
-            if (s === 'failed') { try { pc.restartIce(); } catch (_) { } }
+            const connState = s === 'connected' ? 'connected'
+                : (s === 'failed' || s === 'disconnected' || s === 'closed') ? 'disconnected'
+                    : 'connecting';
+            if (mountedRef.current) setPeers(prev => prev.map(p => p.socketId === socketId ? { ...p, connState } : p));
+
+            if (s === 'connected') {
+                applyEncodings(pc);  // set optimal bitrates once live
+            }
+            if (s === 'failed') {
+                // Full PC recreation is more reliable than restartIce on failed connections
+                const meta = metaRef.current[socketId];
+                if (meta && mountedRef.current) {
+                    setTimeout(() => {
+                        // Only recreate if still mounted and the PC we hold is still the same one
+                        if (pcsRef.current[socketId] === pc && mountedRef.current) {
+                            createPC(socketId, isInitiator);
+                        }
+                    }, 1000);
+                }
+            }
         };
 
         /* if we initiate: create and send offer */
@@ -356,14 +414,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
             pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true })
                 .then(offer => pc.setLocalDescription(offer))
                 .then(() => {
-                    socketRef.current?.emit('signal', {
-                        to: socketId,
-                        signal: { type: pc.localDescription.type, sdp: pc.localDescription.sdp },
-                    });
+                    socketRef.current?.emit('signal', { to: socketId, signal: { type: pc.localDescription.type, sdp: pc.localDescription.sdp } });
                 })
                 .catch(console.error);
         }
-
         return pc;
     };
 
@@ -426,20 +480,28 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
         /* existing users — we are the NON-INITIATOR, we wait for their offer */
         socket.on('all-users', (users) => {
             users.forEach(({ socketId, userId, userName, userAvatar }) => {
-                if (pcsRef.current[socketId]) return; // already have one
+                evictByUserId(userId);  // remove any ghost tile for this userId first
+                if (pcsRef.current[socketId]) return;
                 metaRef.current[socketId] = { userId, userName, userAvatar };
                 createPC(socketId, false);
-                setPeers(prev => [...prev.filter(p => p.socketId !== socketId), { socketId, userId, userName, userAvatar, stream: null, connState: 'connecting' }]);
+                setPeers(prev => [
+                    ...prev.filter(p => p.socketId !== socketId && p.userId !== userId),
+                    { socketId, userId, userName, userAvatar, stream: null, connState: 'connecting' },
+                ]);
                 flushPending(socketId);
             });
         });
 
         /* new user joined — we are INITIATOR, send the offer */
         socket.on('peer-joined', ({ socketId, userId, userName, userAvatar }) => {
+            evictByUserId(userId);  // remove any ghost tile for this userId first
             if (pcsRef.current[socketId]) return;
             metaRef.current[socketId] = { userId, userName, userAvatar };
             createPC(socketId, true);
-            setPeers(prev => [...prev.filter(p => p.socketId !== socketId), { socketId, userId, userName, userAvatar, stream: null, connState: 'connecting' }]);
+            setPeers(prev => [
+                ...prev.filter(p => p.socketId !== socketId && p.userId !== userId),
+                { socketId, userId, userName, userAvatar, stream: null, connState: 'connecting' },
+            ]);
             flushPending(socketId);
         });
 
@@ -503,17 +565,40 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isDarkMode, setIsDarkMode
     };
 
     const toggleShare = async () => {
-        if (isSharing) { setIsSharing(false); return; }
+        if (isSharing) {
+            // Stop screen share — restore camera track
+            screenRef.current?.stop();
+            screenRef.current = null;
+            setIsSharing(false);
+            const camTrack = streamRef.current?.getVideoTracks()[0];
+            if (camTrack) {
+                Object.values(pcsRef.current).forEach(async pc => {
+                    const sender = pc.getSenders().find(s => s.track?.kind === 'video');
+                    if (sender) {
+                        await sender.replaceTrack(camTrack);
+                        applyEncodings(pc, { isScreen: false });
+                    }
+                });
+            }
+            return;
+        }
         try {
-            const ss = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            const ss = await navigator.mediaDevices.getDisplayMedia({
+                video: { frameRate: { ideal: 15, max: 30 }, cursor: 'always' },
+                audio: false,
+            });
             const st = ss.getVideoTracks()[0];
+            st.contentHint = 'detail';   // sharp text/UI rendering
             screenRef.current = st;
             setIsSharing(true);
-            Object.values(pcsRef.current).forEach(pc => {
+            Object.values(pcsRef.current).forEach(async pc => {
                 const sender = pc.getSenders().find(s => s.track?.kind === 'video');
-                sender?.replaceTrack(st);
+                if (sender) {
+                    await sender.replaceTrack(st);
+                    applyEncodings(pc, { isScreen: true });
+                }
             });
-            st.onended = () => setIsSharing(false);
+            st.onended = () => toggleShare(); // user stopped via browser UI
         } catch (_) { }
     };
 

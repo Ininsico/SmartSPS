@@ -63,10 +63,10 @@ const io = new Server(httpServer, {
     transports: ['websocket', 'polling'],
     perMessageDeflate: false,
     httpCompression: false,
-    pingInterval: 10000,
-    pingTimeout: 5000,
-    upgradeTimeout: 10000,
-    maxHttpBufferSize: 2e6,
+    pingInterval: 8000,       // check every 8s
+    pingTimeout: 4000,       // declare dead after 4s of no pong
+    upgradeTimeout: 8000,
+    maxHttpBufferSize: 1e6,
 });
 
 const COLLECTION_NAME = 'socket.io-adapter';
@@ -94,10 +94,21 @@ io.on('connection', (socket) => {
             socket.userAvatar = userAvatar;
             socket.roomId = roomId;
 
-            // STEP 1: Join the room FIRST, then fetch live sockets.
-            // Using Promise.all here races join vs fetch — socket may not be in room yet.
+            // Join room first, then fetch live sockets
             await socket.join(roomId);
             const roomSockets = await io.in(roomId).fetchSockets();
+
+            // ── GHOST CLEANUP ──────────────────────────────────────────────
+            // If same userId already has a socket in the room (e.g. tab crash
+            // / hard refresh that didn't fire 'disconnecting'), kick it so
+            // every peer removes the stale tile before we announce the new one.
+            roomSockets
+                .filter(s => s.id !== socket.id && s.userId === userId)
+                .forEach(ghost => {
+                    io.to(roomId).emit('user-left', ghost.id);  // tell everyone to drop ghost tile
+                    ghost.disconnect(true);                      // kill the ghost socket
+                });
+            // ───────────────────────────────────────────────────────────────
 
             const inviteUrl = process.env.FRONTEND_URL ? `${process.env.FRONTEND_URL}?room=${roomId}` : '';
 
@@ -108,7 +119,6 @@ io.on('connection', (socket) => {
             if (!result) return;
 
             const amHost = result.meeting.hostId === userId;
-
             if (amHost && result.meeting.hostSocketId !== socket.id) {
                 ctrl.reassignHost({ roomId, newHostSocketId: socket.id, newHostUserId: userId });
             }
@@ -116,27 +126,20 @@ io.on('connection', (socket) => {
             socket.emit('host-status', amHost);
             socket.emit('invite-url', inviteUrl);
 
-            // STEP 2: Build the list of OTHER live sockets in the room (not the new joiner).
-            // Use live socket data directly rather than stale DB participant records
-            // to avoid stale socketId mismatches.
-            const others = roomSockets
+            // Build live peer list (ghosts already kicked above)
+            const freshSockets = await io.in(roomId).fetchSockets();
+            const others = freshSockets
                 .filter(s => s.id !== socket.id)
-                .map(s => ({
-                    socketId: s.id,
-                    userId: s.userId,
-                    userName: s.userName,
-                    userAvatar: s.userAvatar,
-                }));
+                .map(s => ({ socketId: s.id, userId: s.userId, userName: s.userName, userAvatar: s.userAvatar }));
 
-            // STEP 3: Send all-users to the NEW joiner FIRST so they can set up
-            // receiver peers before the existing users send them offers.
+            // Send existing peers to the new joiner FIRST (non-initiator setup)
             socket.emit('all-users', others);
 
-            // STEP 4: THEN notify others that a new peer joined so they initiate offers.
-            // Small delay ensures the new joiner's 'all-users' handler runs first.
+            // Then tell existing peers about the new joiner (they become initiators)
+            // 150ms delay lets the joiner's all-users handler finish before offers arrive
             setTimeout(() => {
                 socket.broadcast.to(roomId).emit('peer-joined', { socketId: socket.id, userId, userName, userAvatar });
-            }, 100);
+            }, 150);
 
         } catch (err) {
             console.error('Join error:', err);
