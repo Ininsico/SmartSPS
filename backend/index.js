@@ -14,16 +14,14 @@ import * as ctrl from './controllers/meetingController.js';
 const app = express();
 const httpServer = createServer(app);
 
-// Universal CORS Shield - Allow any origin with full support for Credentials (Clerk, etc)
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    // Echo the request origin back to support credentials (which '*' doesn't allow)
     res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept, X-Clerk-Auth-Token, X-Clerk-Instance-Id');
     res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Max-Age', '86400');
 
-    // Instant response for Preflight (OPTIONS)
     if (req.method === 'OPTIONS') {
         return res.status(200).end();
     }
