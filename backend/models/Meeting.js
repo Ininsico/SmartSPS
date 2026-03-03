@@ -17,8 +17,9 @@ const meetingSchema = new mongoose.Schema({
     inviteUrl: { type: String },
     title: { type: String, default: 'Untitled Meeting' },
     participants: [participantSchema],
-    status: { type: String, enum: ['active', 'ended'], default: 'active' },
+    status: { type: String, enum: ['scheduled', 'active', 'ended'], default: 'active' },
     startTime: { type: Date, default: Date.now },
+    scheduleTime: { type: Date },
     endTime: { type: Date },
 }, { timestamps: true });
 

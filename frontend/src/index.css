@@ -1,18 +1,17 @@
 @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --bg-main: #ffffff;
-  --bg-surface: rgba(255, 255, 255, 0.8);
-  --bg-card: #f4f4f5;
-  --accent-primary: #000000;
-  --accent-secondary: #000000;
-  --text-primary: #000000;
-  --text-secondary: #52525b;
-  --border-glass: rgba(0, 0, 0, 0.1);
-  --shadow-premium: 0 20px 40px -10px rgba(0, 0, 0, 0.05);
+  --bg-main: #1a0a0a;
+  --bg-surface: rgba(26, 10, 10, 0.8);
+  --bg-card: #120505;
+  --accent-primary: #ffffff;
+  --accent-secondary: #ffffff;
+  --text-primary: #ffffff;
+  --text-secondary: rgba(255, 255, 255, 0.6);
+  --border-glass: rgba(255, 255, 255, 0.1);
+  --shadow-premium: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
   --transition-smooth: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
 }
-
 
 * {
   margin: 0;
@@ -62,7 +61,7 @@ body {
 
 .btn-primary {
   background: var(--accent-primary);
-  color: #fff;
+  color: #1a0a0a;
 }
 
 .btn-primary:hover {
@@ -79,5 +78,5 @@ body {
 
 .btn-secondary:hover {
   background: var(--accent-primary);
-  color: #000;
+  color: #1a0a0a;
 }

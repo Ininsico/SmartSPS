@@ -1,7 +1,7 @@
 import React from 'react';
-import { Home, Users, BarChart2, Book, Settings, Layers, Box, LayoutGrid } from 'lucide-react';
+import { Home, LayoutGrid, Calendar, History, Settings } from 'lucide-react';
 
-const Sidebar = ({ isDarkMode }) => {
+const Sidebar = ({ isDarkMode, onScheduleClick }) => {
     const darkMaroon = '#1a0a0a';
 
     const styles = {
@@ -39,12 +39,9 @@ const Sidebar = ({ isDarkMode }) => {
     };
 
     const menuItems = [
-        { icon: LayoutGrid, active: true },
-        { icon: Users },
-        { icon: Layers },
-        { icon: BarChart2 },
-        { icon: Book },
-        { icon: Box }
+        { icon: LayoutGrid, active: true, title: 'Dashboard' },
+        { icon: Calendar, title: 'Schedule Meeting', onClick: onScheduleClick },
+        { icon: History, title: 'History' }
     ];
 
     return (
@@ -55,6 +52,8 @@ const Sidebar = ({ isDarkMode }) => {
                 {menuItems.map((item, idx) => (
                     <div
                         key={idx}
+                        title={item.title}
+                        onClick={item.onClick}
                         style={{
                             ...styles.iconWrapper,
                             ...(item.active ? styles.activeIcon : {})
@@ -66,7 +65,7 @@ const Sidebar = ({ isDarkMode }) => {
             </div>
 
             <div style={{ marginTop: 'auto' }}>
-                <Settings size={20} style={styles.iconWrapper} />
+                <Settings size={20} style={styles.iconWrapper} title="Settings" />
             </div>
         </aside>
     );

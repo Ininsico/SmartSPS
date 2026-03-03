@@ -15,7 +15,8 @@ function App() {
   const [roomId, setRoomId] = useState('');
   const [isDarkMode, setIsDarkMode] = useState(() => {
     const saved = localStorage.getItem('theme');
-    return saved ? saved === 'dark' : true;
+    if (!saved) return true;
+    return saved === 'dark';
   });
   const [mediaConfig, setMediaConfig] = useState({ micOn: true, videoOn: true });
 
@@ -24,6 +25,8 @@ function App() {
 
   useEffect(() => {
     localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
+    document.documentElement.style.backgroundColor = isDarkMode ? '#1a0a0a' : '#ffffff';
+    document.body.style.backgroundColor = isDarkMode ? '#1a0a0a' : '#ffffff';
   }, [isDarkMode]);
 
   useEffect(() => {

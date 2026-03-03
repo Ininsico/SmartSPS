@@ -12,6 +12,26 @@ export const getMeetingHistory = async (req, res) => {
     }
 };
 
+export const scheduleMeeting = async (req, res) => {
+    try {
+        const { title, scheduleTime, roomId } = req.body;
+        const hostId = req.auth.userId;
+
+        const meeting = await Meeting.create({
+            roomId,
+            hostId,
+            title,
+            scheduleTime: new Date(scheduleTime),
+            status: 'scheduled',
+            participants: []
+        });
+
+        res.status(201).json(meeting);
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to schedule meeting' });
+    }
+};
+
 export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, isHost, inviteUrl }) => {
     let meeting = await Meeting.findOne({ roomId });
 
