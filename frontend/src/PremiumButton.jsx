@@ -12,9 +12,9 @@ const PremiumButton = ({ children, onClick, className = '', variant = 'primary',
       disabled={disabled}
       className={cn(
         "group relative px-10 py-3 font-montserrat font-extrabold uppercase tracking-[0.15em] text-[12px] rounded-full overflow-hidden transition-all duration-500 active:scale-[0.98] flex items-center justify-center outline-none border-none cursor-pointer",
-        isPrimary && "bg-premium-accent text-white hover:bg-premium-accent/90 hover:-translate-y-1 hover:shadow-2xl shadow-premium-accent/40",
+        isPrimary && "bg-premium-accent text-black hover:bg-premium-accent/90 hover:-translate-y-1 hover:shadow-2xl shadow-white/40",
         isSecondary && "bg-white/5 text-white border border-white/10 hover:bg-white/10 hover:-translate-y-1 hover:shadow-2xl shadow-black/10",
-        variant === 'danger' && "bg-premium-danger text-white hover:opacity-90 hover:-translate-y-1 shadow-lg shadow-premium-danger/30",
+        variant === 'danger' && "bg-premium-danger text-white hover:opacity-90 hover:-translate-y-1 shadow-lg shadow-white/10",
         disabled && "opacity-40 cursor-not-allowed pointer-events-none",
         className
       )}

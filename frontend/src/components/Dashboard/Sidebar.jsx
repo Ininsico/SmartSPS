@@ -34,8 +34,8 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, 
         },
         activeIcon: {
             color: '#ffffff',
-            backgroundColor: '#ef4444',
-            boxShadow: '0 4px 15px rgba(239, 68, 68, 0.3)'
+            backgroundColor: '#000000',
+            boxShadow: '0 4px 15px rgba(0, 0, 0, 0.2)'
         }
     };
 

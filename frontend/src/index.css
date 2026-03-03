@@ -2,13 +2,13 @@
 @import "tailwindcss";
 
 @theme {
-  --color-premium-bg: #1a0a0a;
-  --color-premium-surface: #1e1a1a;
-  --color-premium-card: #120505;
-  --color-premium-accent: #ef4444;
-  --color-premium-danger: #e53e3e;
-  --color-premium-success: #68d391;
-  --color-premium-warning: #f6c90e;
+  --color-premium-bg: #000000;
+  --color-premium-surface: #111111;
+  --color-premium-card: #0a0a0a;
+  --color-premium-accent: #ffffff;
+  --color-premium-danger: #333333;
+  --color-premium-success: #ffffff;
+  --color-premium-warning: #888888;
 
   --font-montserrat: "Montserrat", sans-serif;
 
@@ -61,7 +61,7 @@
   }
 
   .btn-premium-primary {
-    @apply px-6 py-3 rounded-xl font-bold bg-premium-accent text-white hover:bg-premium-accent/90 transition-all duration-300 active:scale-95 shadow-lg shadow-premium-accent/20 border-none cursor-pointer;
+    @apply px-6 py-3 rounded-xl font-bold bg-premium-accent text-black hover:bg-premium-accent/90 transition-all duration-300 active:scale-95 shadow-lg shadow-white/20 border-none cursor-pointer;
   }
 
   .btn-premium-danger {

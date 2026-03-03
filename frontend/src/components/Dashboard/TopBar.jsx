@@ -8,7 +8,7 @@ const TopBar = ({ isDarkMode, toggleTheme, onSignOut, onMenuClick }) => {
         <header className="topbar">
             <div className="left-section">
                 <button className="menu-btn" onClick={onMenuClick}><Menu size={20} /></button>
-                <Zap size={18} fill="#ef4444" className="text-red-500" />
+                <Zap size={18} fill="currentColor" className="opacity-80" />
                 <div className="breadcrumb">
                     <span>smartMeet</span>
                     <ChevronRight size={14} className="hide-mobile" />

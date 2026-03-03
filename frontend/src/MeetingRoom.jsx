@@ -100,7 +100,7 @@ const UserTile = ({ user, isDark, isYou = false, peerState, small = false, activ
                         onClick={(e) => { e.stopPropagation(); isRemoteAdminMuted ? onForceUnmute() : onForceMute(); }}
                         className={cn(
                             "px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all active:scale-95 shadow-lg shadow-black/30 border-none cursor-pointer",
-                            isRemoteAdminMuted ? "bg-green-500 hover:bg-green-600 text-white" : "bg-red-500 hover:bg-red-600 text-white"
+                            isRemoteAdminMuted ? "bg-gray-700 text-white" : "bg-black hover:bg-black/90 text-white"
                         )}
                     >
                         {isRemoteAdminMuted ? 'UNMUTE' : 'MUTE'}
@@ -116,8 +116,8 @@ const UserTile = ({ user, isDark, isYou = false, peerState, small = false, activ
             )}>
                 {user.userAvatar && <img src={user.userAvatar} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />}
                 <span className="truncate max-w-[100px]">{user.userName || (isYou ? 'You' : 'Loading...')}</span>
-                {(isMuted || isRemoteAdminMuted) && <MicOff size={11} className={isRemoteAdminMuted ? "text-red-500" : "text-white/60"} />}
-                {isRemoteAdminMuted && <span className="text-[9px] text-red-500 font-extrabold tracking-widest">LOCKED</span>}
+                {(isMuted || isRemoteAdminMuted) && <MicOff size={11} className={isRemoteAdminMuted ? "text-white" : "text-white/60"} />}
+                {isRemoteAdminMuted && <span className="text-[9px] text-white font-extrabold tracking-widest">LOCKED</span>}
             </div>
 
             {/* Premium Gradient Overlay */}
@@ -695,8 +695,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
                 <div className="flex items-center gap-4">
                     {isRecording && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500">
-                            <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-white">
+                            <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
                             <span className="text-[11px] font-black tracking-widest uppercase">REC {fmtTime(recSeconds)}</span>
                         </div>
                     )}
@@ -803,10 +803,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                             initial={{ opacity: 0, y: 50, scale: 0.9 }}
                             animate={{ opacity: 1, y: 0, scale: 1 }}
                             exit={{ opacity: 0, y: 50, scale: 0.9 }}
-                            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[1000] px-6 py-3.5 rounded-2xl bg-black border border-red-500 shadow-2xl shadow-red-500/20 flex items-center gap-3 text-white"
+                            className="absolute bottom-24 left-1/2 -translate-x-1/2 z-[1000] px-6 py-3.5 rounded-2xl bg-white border border-black shadow-2xl flex items-center gap-3 text-black"
                         >
-                            <Loader2 size={18} className="animate-spin text-red-500" />
-                            <div className="text-sm font-black tracking-widest uppercase">
+                            <Loader2 size={18} className="animate-spin text-black" />
+                            <div className="text-sm font-black tracking-widest uppercase text-black">
                                 {phaseMsg} {countdown > 0 && <span className="opacity-50 font-normal">({countdown}s)</span>}
                             </div>
                         </motion.div>
@@ -823,7 +823,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         onClick={toggleMic}
                         className={cn(
                             "w-11 h-11 rounded-xl border-none transition-all active:scale-90 flex items-center justify-center cursor-pointer",
-                            micOn ? (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900") : "bg-red-500 text-white shadow-lg shadow-red-500/20"
+                            micOn ? (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900") : "bg-black text-white shadow-lg"
                         )}
                     >
                         {micOn ? <Mic size={20} /> : <MicOff size={20} />}
@@ -833,7 +833,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         onClick={toggleVideo}
                         className={cn(
                             "w-11 h-11 rounded-xl border-none transition-all active:scale-90 flex items-center justify-center cursor-pointer",
-                            videoOn ? (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900") : "bg-red-500 text-white shadow-lg shadow-red-500/20"
+                            videoOn ? (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900") : "bg-black text-white shadow-lg"
                         )}
                     >
                         {videoOn ? <VideoIcon size={20} /> : <VideoOff size={20} />}
@@ -863,7 +863,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         onClick={isRecording ? stopRecording : startRecording}
                         className={cn(
                             "w-11 h-11 rounded-xl border-none transition-all active:scale-90 flex items-center justify-center cursor-pointer",
-                            isRecording ? "bg-red-500 text-white shadow-lg shadow-red-500/20" : (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900")
+                            isRecording ? "bg-black text-white shadow-lg shadow-black/20" : (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900")
                         )}
                     >
                         <Circle size={20} fill={isRecording ? 'currentColor' : 'none'} className={isRecording ? 'animate-pulse' : ''} />
@@ -878,7 +878,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                             disabled={['starting', 'stopping', 'fetching', 'summarizing'].includes(botPhase)}
                             className={cn(
                                 "h-11 px-4 rounded-xl font-black text-[10px] tracking-widest uppercase transition-all flex items-center gap-2 active:scale-95",
-                                botRunning ? "bg-red-500/20 text-red-500 border border-red-500/30 shadow-lg shadow-red-500/10" : (D ? "bg-white/5 hover:bg-white/10 text-white border border-transparent" : "bg-gray-100 hover:bg-gray-200 text-gray-900 border border-transparent"),
+                                botRunning ? "bg-black/20 text-black border border-black/30 shadow-lg shadow-black/10" : (D ? "bg-white/5 hover:bg-white/10 text-white border border-transparent" : "bg-gray-100 hover:bg-gray-200 text-gray-900 border border-transparent"),
                                 ['starting', 'stopping', 'fetching', 'summarizing'].includes(botPhase) && "cursor-wait opacity-50"
                             )}
                         >
@@ -919,7 +919,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         )}
                     >
                         <MessageSquare size={20} />
-                        {messages.length > 0 && panel !== 'chat' && <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full border-2 border-premium-surface" />}
+                        {messages.length > 0 && panel !== 'chat' && <span className="absolute top-2 right-2 w-2 h-2 bg-black rounded-full border-2 border-premium-surface" />}
                     </button>
 
                     <button
@@ -928,9 +928,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                             if (user?.id) localStorage.removeItem(`meeting_history_${user.id}`);
                             onLeave();
                         }}
-                        className="w-16 h-11 rounded-xl bg-red-500 hover:bg-red-600 text-white transition-all active:scale-90 flex items-center justify-center shadow-lg shadow-red-500/20 border-none cursor-pointer"
+                        className="h-11 px-6 rounded-xl bg-black hover:bg-black/90 text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-90 border-none cursor-pointer flex items-center gap-2"
                     >
-                        <PhoneOff size={22} className="rotate-[135deg]" />
+                        <PhoneOff size={16} />
+                        Leave Room
                     </button>
                 </div>
             </footer>
@@ -950,7 +951,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
                             <div>
                                 <h3 className="m-0 text-base font-black tracking-tight flex items-center gap-2">
-                                    <Circle size={12} className="text-red-500 fill-red-500 animate-pulse" />
+                                    <Circle size={12} className="text-black fill-black animate-pulse" />
                                     AI MEETING NOTES
                                 </h3>
                                 <div className="text-[10px] font-bold opacity-40 uppercase tracking-widest mt-1 truncate max-w-[200px]">
@@ -968,7 +969,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                                 <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} className="space-y-6">
                                     {summary.overview && (
                                         <div className="p-4 rounded-2xl bg-white/5 border border-white/10">
-                                            <label className="text-[10px] font-black text-red-500 uppercase tracking-widest mb-2 block">Executive Summary</label>
+                                            <label className="text-[10px] font-black text-black uppercase tracking-widest mb-2 block">Executive Summary</label>
                                             <p className="text-sm leading-relaxed opacity-90">{summary.overview}</p>
                                         </div>
                                     )}
@@ -979,7 +980,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                                             <div className="space-y-2">
                                                 {summary.keyPoints.map((p, i) => (
                                                     <div key={i} className="flex gap-3 text-sm leading-relaxed group">
-                                                        <span className="text-red-500 font-bold">•</span>
+                                                        <span className="text-black font-bold">•</span>
                                                         <span className="opacity-80 group-hover:opacity-100 transition-opacity">{p}</span>
                                                     </div>
                                                 ))}
@@ -989,12 +990,11 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
                                     {summary.actionItems?.length > 0 && (
                                         <div className="space-y-3">
-                                            <label className="text-[10px] font-black text-red-500 uppercase tracking-widest block font-serif">Action Items</label>
+                                            <label className="text-[10px] font-black text-black uppercase tracking-widest block font-serif">Action Items</label>
                                             <div className="space-y-2">
                                                 {summary.actionItems.map((p, i) => (
-                                                    <div key={i} className="flex gap-3 text-sm leading-relaxed p-2.5 rounded-xl bg-red-400/5 border border-red-400/10">
-                                                        <span className="text-red-400 font-bold">❑</span>
-                                                        <span className="opacity-90">{p}</span>
+                                                    <div key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug p-2 rounded-xl bg-black/5 border border-black/10">
+                                                        <span className="text-black font-bold">❑</span> {p}
                                                     </div>
                                                 ))}
                                             </div>
@@ -1016,7 +1016,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                                     ) : (transcript?.segments || []).map((seg, i) => (
                                         <div key={i} className="space-y-1.5 group">
                                             <div className="flex justify-between items-center text-[9px] font-black tracking-widest uppercase px-1">
-                                                <span className="text-red-500">{seg.speaker}</span>
+                                                <span className="text-black">{seg.speaker}</span>
                                                 <span className="opacity-30 tracking-tight">{new Date(seg.startTime * 1000).toISOString().substr(11, 8)}</span>
                                             </div>
                                             <div className={cn(
@@ -1107,7 +1107,7 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
         <div className="h-full flex flex-col">
             <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
                 <h3 className="m-0 text-base font-black tracking-tight flex items-center gap-2">
-                    <MessageSquare size={16} className="text-red-500" />
+                    <MessageSquare size={16} className="text-black" />
                     MEETING CHAT
                 </h3>
                 <button onClick={onClose} className="p-2 rounded-lg hover:bg-white/5 transition-colors border-none cursor-pointer text-gray-400 hover:text-white"><X size={18} /></button>
@@ -1127,7 +1127,7 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
                         {m.from !== 'me' && <span className="text-[9px] font-black uppercase tracking-widest opacity-40 ml-1">{m.userName}</span>}
                         <div className={cn(
                             "px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] break-words leading-relaxed transition-all",
-                            m.from === 'me' ? "bg-red-500 text-white rounded-tr-none" : (isDark ? "bg-white/5 text-white border border-white/5 rounded-tl-none" : "bg-gray-100 text-gray-900 border border-gray-200 rounded-tl-none")
+                            m.from === 'me' ? "bg-black text-white rounded-tr-none" : (isDark ? "bg-white/5 text-white border border-white/5 rounded-tl-none" : "bg-gray-100 text-gray-900 border border-gray-200 rounded-tl-none")
                         )}>
                             {m.text}
                         </div>
@@ -1153,7 +1153,7 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
                     <button
                         type="submit"
                         disabled={!t.trim()}
-                        className="w-12 h-11 flex items-center justify-center rounded-xl bg-red-500 text-white hover:bg-red-600 transition-all active:scale-95 disabled:opacity-30 disabled:grayscale border-none cursor-pointer shadow-lg shadow-red-500/20"
+                        className="w-12 h-11 flex items-center justify-center rounded-xl bg-black text-white hover:bg-black transition-all active:scale-95 disabled:opacity-30 disabled:grayscale border-none cursor-pointer shadow-lg shadow-black/20"
                     >
                         <Send size={18} />
                     </button>
@@ -1189,8 +1189,8 @@ const InviteModal = ({ roomId, onClose, isDark }) => {
                 )}
             >
                 <div className="flex flex-col items-center text-center gap-6">
-                    <div className="w-16 h-16 rounded-[22px] bg-red-500/10 flex items-center justify-center">
-                        <MessageSquare size={32} className="text-red-500" />
+                    <div className="w-16 h-16 rounded-[22px] bg-black/10 flex items-center justify-center">
+                        <MessageSquare size={32} className="text-black" />
                     </div>
 
                     <div>
@@ -1203,7 +1203,7 @@ const InviteModal = ({ roomId, onClose, isDark }) => {
                         isDark ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200"
                     )}>
                         <span className="text-[10px] font-black uppercase tracking-[.3em] opacity-40">Meeting Code</span>
-                        <code className="text-3xl font-black tracking-[.2em] text-red-500">{roomId.toUpperCase()}</code>
+                        <code className="text-3xl font-black tracking-[.2em] text-black">{roomId.toUpperCase()}</code>
                     </div>
 
                     <div className="w-full flex flex-col gap-3 mt-2">
@@ -1211,10 +1211,10 @@ const InviteModal = ({ roomId, onClose, isDark }) => {
                             onClick={copy}
                             className={cn(
                                 "w-full py-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.98] flex items-center justify-center gap-3 border-none cursor-pointer",
-                                copied ? "bg-black text-white border border-red-500" : "bg-red-500 text-white hover:bg-red-600 shadow-xl shadow-red-500/30"
+                                copied ? "bg-black text-white border border-black" : "bg-black text-white hover:bg-black shadow-xl shadow-black/30"
                             )}
                         >
-                            {copied ? <><X size={16} className="text-red-500" /> COPIED!</> : 'COPY MEETING LINK'}
+                            {copied ? <><X size={16} className="text-black" /> COPIED!</> : 'COPY MEETING LINK'}
                         </button>
 
                         <button

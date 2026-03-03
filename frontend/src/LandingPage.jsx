@@ -204,7 +204,23 @@ const LandingPage = ({ onJoin, onStartMeeting, isDarkMode, setIsDarkMode }) => {
                 <PremiumButton
                   className="px-6 h-11 text-[10px] !uppercase tracking-widest shrink-0"
                   disabled={!roomName}
-                  onClick={() => onJoin(roomName)}
+                  onClick={() => {
+                    let target = roomName.trim();
+                    try {
+                      if (target.includes('://')) {
+                        const url = new URL(target);
+                        const params = new URLSearchParams(url.search);
+                        const roomParam = params.get('room');
+                        if (roomParam) target = roomParam;
+                        else {
+                          // Try to get from end of pathname
+                          const parts = url.pathname.split('/');
+                          target = parts[parts.length - 1];
+                        }
+                      }
+                    } catch (e) { }
+                    onJoin(target.toLowerCase());
+                  }}
                 >
                   Join
                 </PremiumButton>

@@ -268,11 +268,11 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                     onClick={() => setShowSummary(!showSummary)}
                                     className="w-full p-5 flex items-center justify-between bg-transparent border-none cursor-pointer transition-colors"
                                 >
-                                    <div className="flex items-center gap-3 font-black text-red-500 text-sm tracking-tight">
+                                    <div className="flex items-center gap-3 font-bold text-sm tracking-tight">
                                         <Sparkles size={18} />
                                         <span>AI MEETING SUMMARY</span>
                                     </div>
-                                    {showSummary ? <ChevronUp size={20} className="text-red-500" /> : <ChevronDown size={20} className="text-red-500" />}
+                                    {showSummary ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
                                 </button>
 
                                 <AnimatePresence>
@@ -284,12 +284,10 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                             className="overflow-hidden"
                                         >
                                             <div className="p-5 pt-0 flex flex-col gap-6">
-                                                {summary.overview && (
-                                                    <div>
-                                                        <label className="text-[10px] font-black uppercase tracking-widest text-red-500/60 mb-2 block">Executive Overview</label>
-                                                        <p className="m-0 text-sm leading-relaxed opacity-80">{summary.overview}</p>
-                                                    </div>
-                                                )}
+                                                <div>
+                                                    <label className="text-[10px] font-black uppercase tracking-widest opacity-60 mb-2 block">Executive Overview</label>
+                                                    <p className="m-0 text-sm leading-relaxed opacity-80">{summary.overview}</p>
+                                                </div>
 
                                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                                     {summary.keyPoints?.length > 0 && (
@@ -298,7 +296,7 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                                             <ul className="m-0 p-0 list-none space-y-2.5">
                                                                 {summary.keyPoints.map((p, i) => (
                                                                     <li key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug">
-                                                                        <span className="text-red-500 font-bold">•</span> {p}
+                                                                        <span className="font-bold">•</span> {p}
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -306,11 +304,10 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
                                                     )}
                                                     {summary.actionItems?.length > 0 && (
                                                         <div>
-                                                            <label className="text-[10px] font-black uppercase tracking-widest text-red-500/60 mb-3 block">Critical Actions</label>
                                                             <ul className="m-0 p-0 list-none space-y-2.5">
                                                                 {summary.actionItems.map((p, i) => (
-                                                                    <li key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug p-2 rounded-xl bg-red-500/5 border border-red-500/10">
-                                                                        <span className="text-red-500 font-bold">❑</span> {p}
+                                                                    <li key={i} className="text-sm opacity-80 flex gap-2.5 leading-snug p-2 rounded-xl bg-black/5 border border-black/10">
+                                                                        <span className="font-bold text-black">❑</span> {p}
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -320,11 +317,11 @@ const MeetingDetailModal = ({ meeting, onClose, isDarkMode }) => {
 
                                                 {summary.decisions?.length > 0 && (
                                                     <div>
-                                                        <label className="text-[10px] font-black uppercase tracking-widest text-red-500/60 mb-3 block">Key Decisions</label>
+                                                        <label className="text-[10px] font-black uppercase tracking-widest text-black/60 mb-3 block">Key Decisions</label>
                                                         <ul className="m-0 p-0 list-none grid grid-cols-1 md:grid-cols-2 gap-2">
                                                             {summary.decisions.map((p, i) => (
-                                                                <li key={i} className="text-xs font-bold p-3 rounded-xl bg-red-500/5 border border-red-500/10 flex gap-2.5 items-center">
-                                                                    <span className="text-red-500 font-bold">✓</span> {p}
+                                                                <li key={i} className="text-xs font-bold p-3 rounded-xl bg-black/5 border border-black/10 flex gap-2.5 items-center">
+                                                                    <span className="font-bold text-black">✓</span> {p}
                                                                 </li>
                                                             ))}
                                                         </ul>
@@ -578,15 +575,14 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                                                         href={rec.url}
                                                         target="_blank"
                                                         rel="noreferrer"
-                                                        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-premium-danger text-white text-xs font-black uppercase tracking-widest transition-opacity hover:opacity-90 active:scale-[0.98]"
+                                                        className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-black text-white text-xs font-black uppercase tracking-widest transition-opacity hover:opacity-90 active:scale-[0.98]"
                                                     >
                                                         <ExternalLink size={14} /> Download
                                                     </a>
                                                     <button
                                                         onClick={() => deleteRecording(rec._id)}
                                                         className={cn(
-                                                            "p-2.5 rounded-xl text-premium-danger transition-colors",
-                                                            isDarkMode ? "bg-white/5 hover:bg-white/10" : "bg-gray-100 hover:bg-gray-200"
+                                                            "p-2.5 rounded-xl text-black hover:bg-black/10 transition-colors bg-black/5"
                                                         )}
                                                     >
                                                         <Trash2 size={16} />

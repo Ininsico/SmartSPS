@@ -82,7 +82,7 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
             display: 'flex',
             alignItems: 'center',
             gap: '0.25rem',
-            color: '#ef4444',
+            color: isDarkMode ? '#fff' : '#000',
             fontSize: '0.75rem',
             fontWeight: 700,
             background: 'none',
@@ -92,7 +92,7 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
             borderRadius: '8px',
             transition: 'background 0.2s',
             '&:hover': {
-                background: isDarkMode ? 'rgba(229, 62, 62, 0.1)' : 'rgba(229, 62, 62, 0.05)'
+                background: isDarkMode ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)'
             }
         }
     };
@@ -114,8 +114,8 @@ const MeetingCard = ({ meeting, isDarkMode, onShowDetails }) => {
                         </div>
                         {hasNotes && (
                             <div style={{
-                                backgroundColor: '#ef4444',
-                                color: 'white',
+                                backgroundColor: isDarkMode ? '#fff' : '#000',
+                                color: isDarkMode ? '#000' : '#fff',
                                 fontSize: '8px',
                                 fontWeight: 900,
                                 padding: '2px 6px',

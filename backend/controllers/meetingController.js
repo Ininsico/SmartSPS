@@ -1,4 +1,6 @@
 import Meeting from '../models/Meeting.js';
+import Transcript from '../models/Transcript.js';
+import mongoose from 'mongoose';
 import {
     getCachedRoom, setCachedRoom, patchCachedRoom, patchCachedParticipant,
     evictRoom, getCachedHistory, setCachedHistory, invalidateHistory, invalidateAllHistory,
