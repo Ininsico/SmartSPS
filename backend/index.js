@@ -19,15 +19,26 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 
-mongoose
-    .connect(process.env.MONGODB_URI)
-    .then(() => console.log('✅ MongoDB connected'))
-    .catch(err => console.error('❌ MongoDB error:', err));
+let mongoPromise = null;
 
-// Request Logger
-app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
+const connectDB = () => {
+    if (mongoose.connection.readyState === 1) return Promise.resolve();
+    if (mongoPromise) return mongoPromise;
+    mongoPromise = mongoose.connect(process.env.MONGODB_URI)
+        .then(() => { mongoPromise = null; })
+        .catch(err => { mongoPromise = null; throw err; });
+    return mongoPromise;
+};
+
+// Await DB before every route
+app.use(async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (err) {
+        console.error('MongoDB connection failed:', err.message);
+        res.status(503).json({ error: 'Database unavailable' });
+    }
 });
 
 app.use('/api/meetings', meetingRoutes);
@@ -42,9 +53,7 @@ app.get('/debug', (req, res) => res.json({
         NODE_ENV: process.env.NODE_ENV || 'NOT SET',
     },
     mongo: mongoose.connection.readyState,
-    // mongo states: 0=disconnected 1=connected 2=connecting 3=disconnecting
 }));
-
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
