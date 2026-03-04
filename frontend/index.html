@@ -6,6 +6,17 @@
   <link rel="icon" type="image/svg+xml" href="/vite.svg" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>smartMeet | Premium Video Meetings</title>
+  <script src="https://js.pusher.com/beams/1.0/push-notifications-cdn.js"></script>
+  <script>
+    const beamsClient = new PusherPushNotifications.Client({
+      instanceId: 'c2ce5289-d137-42e0-ac76-7c31f6983408',
+    });
+
+    beamsClient.start()
+      .then(() => beamsClient.addDeviceInterest('hello'))
+      .then(() => console.log('Successfully registered and subscribed!'))
+      .catch(console.error);
+  </script>
 </head>
 
 <body>

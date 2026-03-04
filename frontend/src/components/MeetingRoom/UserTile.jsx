@@ -3,15 +3,22 @@ import { motion } from 'framer-motion';
 import { MicOff } from 'lucide-react';
 import { cn } from '../../utils';
 
-export const RemoteVideoPlayer = ({ videoTrack, audioTrack }) => {
+export const RemoteVideoPlayer = ({ videoTrack }) => {
     const videoRef = useRef(null);
     useEffect(() => {
         if (videoTrack && videoRef.current) videoTrack.play(videoRef.current);
     }, [videoTrack]);
+    return <div ref={videoRef} className="w-full h-full object-cover block" />;
+};
+
+export const RemoteAudioPlayer = ({ audioTrack }) => {
     useEffect(() => {
-        if (audioTrack) audioTrack.play();
+        if (audioTrack) {
+            audioTrack.play();
+            return () => audioTrack.stop();
+        }
     }, [audioTrack]);
-    return <div key={videoTrack?._ID || 'no-track'} ref={videoRef} className="w-full h-full object-cover block" />;
+    return null;
 };
 
 export const ScreenSharePlayer = ({ track }) => {
@@ -62,8 +69,11 @@ const UserTile = ({
             {isYou ? (
                 <div ref={videoRef} className="w-full h-full object-cover block" />
             ) : user.videoTrack ? (
-                <RemoteVideoPlayer videoTrack={user.videoTrack} audioTrack={user.audioTrack} />
+                <RemoteVideoPlayer videoTrack={user.videoTrack} />
             ) : null}
+
+            {/* Always render audio if present, regardless of video status */}
+            {!isYou && user.audioTrack && <RemoteAudioPlayer audioTrack={user.audioTrack} />}
 
             {/* Show avatar overlay only when there is truly no video to display */}
             {(isYou ? !user.videoOn : !user.videoTrack) && (

@@ -8,6 +8,7 @@ const participantSchema = new mongoose.Schema({
     joinedAt: { type: Date, default: Date.now },
     leftAt: { type: Date },
     isActive: { type: Boolean, default: true },
+    agoraUid: { type: Number },
 }, { _id: false });
 
 const meetingSchema = new mongoose.Schema({

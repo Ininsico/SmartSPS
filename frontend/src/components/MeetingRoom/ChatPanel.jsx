@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send } from 'lucide-react';
 import { cn } from '../../utils';
+import { useUser } from '@clerk/clerk-react';
 
 const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
+    const { user } = useUser();
     const [t, setT] = useState('');
     const scrollRef = useRef();
 
@@ -31,26 +33,29 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
                         <MessageSquare size={48} />
                         <p className="text-[10px] font-black uppercase tracking-[.2em]">Start the conversation</p>
                     </div>
-                ) : messages.map((m, i) => (
-                    <div key={m.id || i} className={cn(
-                        "flex flex-col gap-1",
-                        m.from === 'me' ? "items-end" : "items-start"
-                    )}>
-                        {m.from !== 'me' && (
-                            <span className="text-[9px] font-black uppercase tracking-widest opacity-40 ml-1">
-                                {m.userName}
-                            </span>
-                        )}
-                        <div className={cn(
-                            "px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] break-words leading-relaxed transition-all",
-                            m.from === 'me'
-                                ? "bg-black text-white rounded-tr-none"
-                                : (isDark ? "bg-white/5 text-white border border-white/5 rounded-tl-none" : "bg-gray-100 text-gray-900 border border-gray-200 rounded-tl-none")
+                ) : messages.map((m, i) => {
+                    const isMe = String(m.from) === String(user?.id) || m.from === 'me';
+                    return (
+                        <div key={m.id || i} className={cn(
+                            "flex flex-col gap-1",
+                            isMe ? "items-end" : "items-start"
                         )}>
-                            {m.text}
+                            {!isMe && (
+                                <span className="text-[9px] font-black uppercase tracking-widest opacity-40 ml-1">
+                                    {m.userName}
+                                </span>
+                            )}
+                            <div className={cn(
+                                "px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] break-words leading-relaxed transition-all",
+                                isMe
+                                    ? "bg-black text-white rounded-tr-none"
+                                    : (isDark ? "bg-white/5 text-white border border-white/5 rounded-tl-none" : "bg-gray-100 text-gray-900 border border-gray-200 rounded-tl-none")
+                            )}>
+                                {m.text}
+                            </div>
                         </div>
-                    </div>
-                ))}
+                    );
+                })}
             </div>
 
             <div className="p-4 bg-black/20 backdrop-blur-xl border-t border-white/5 shrink-0">

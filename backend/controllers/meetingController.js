@@ -7,6 +7,8 @@ import {
     recordHit, recordMiss,
 } from '../cache.js';
 
+import pusher from '../pusher.js';
+
 export const getMeetingHistory = async (req, res) => {
     try {
         const userId = req.auth.userId;
@@ -67,14 +69,14 @@ export const scheduleMeeting = async (req, res) => {
 
 export const joinMeeting = async (req, res) => {
     try {
-        const { roomId, userName: bodyName, userAvatar: bodyAvatar } = req.body;
+        const { roomId, userName: bodyName, userAvatar: bodyAvatar, agoraUid } = req.body;
         const userId = req.auth.userId;
         const userName = bodyName || req.headers['x-user-name'] || 'User';
         const userAvatar = bodyAvatar || req.headers['x-user-avatar'] || '';
         const socketId = req.headers['x-session-id'] || 'no-session';
         const inviteUrl = `${req.headers.origin}/?room=${roomId}`;
 
-        const result = await createOrJoinMeeting({ roomId, userId, userName, userAvatar, socketId, inviteUrl });
+        const result = await createOrJoinMeeting({ roomId, userId, userName, userAvatar, agoraUid, socketId, inviteUrl });
         console.log(`[JOIN] User ${userId} joined room ${roomId}`);
         res.json(result);
     } catch (err) {
@@ -83,7 +85,7 @@ export const joinMeeting = async (req, res) => {
     }
 };
 
-export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, socketId, inviteUrl }) => {
+export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar, agoraUid, socketId, inviteUrl }) => {
     const cached = getCachedRoom(roomId);
     let meeting;
 
@@ -125,17 +127,17 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
             if (existingIdx >= 0) {
                 await Meeting.updateOne(
                     { roomId, 'participants.userId': userId },
-                    { $set: { 'participants.$.socketId': socketId, 'participants.$.isActive': true, 'participants.$.leftAt': null, 'participants.$.name': userName, 'participants.$.avatar': userAvatar } }
+                    { $set: { 'participants.$.socketId': socketId, 'participants.$.isActive': true, 'participants.$.leftAt': null, 'participants.$.name': userName, 'participants.$.avatar': userAvatar, 'participants.$.agoraUid': agoraUid } }
                 );
             } else {
                 await Meeting.updateOne(
                     { roomId },
-                    { $push: { participants: { userId, socketId, name: userName, avatar: userAvatar, isActive: true } } }
+                    { $push: { participants: { userId, socketId, name: userName, avatar: userAvatar, isActive: true, agoraUid } } }
                 );
             }
 
             // Sync cache
-            patchCachedParticipant(roomId, userId, { socketId, name: userName, avatar: userAvatar, isActive: true });
+            patchCachedParticipant(roomId, userId, { socketId, name: userName, avatar: userAvatar, isActive: true, agoraUid });
             patchCachedRoom(roomId, {
                 status: meeting.status,
                 hostId: newHostId,
@@ -154,7 +156,7 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
                 inviteUrl,
                 title: `Meeting ${roomId.toUpperCase()}`,
                 status: 'active',
-                participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true }],
+                participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true, agoraUid }],
             });
         } else {
             const needsActivate = meeting.status === 'ended' || meeting.status === 'scheduled';
@@ -172,8 +174,9 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
                 existing.leftAt = undefined;
                 existing.name = userName;
                 existing.avatar = userAvatar;
+                existing.agoraUid = agoraUid;
             } else {
-                meeting.participants.push({ userId, socketId, name: userName, avatar: userAvatar, isActive: true });
+                meeting.participants.push({ userId, socketId, name: userName, avatar: userAvatar, isActive: true, agoraUid });
             }
 
             if (meeting.hostId === userId) meeting.hostSocketId = socketId;
@@ -226,11 +229,18 @@ export const saveChatMessage = async (req, res) => {
         const { roomId } = req.params;
         const { text, senderName, senderAvatar } = req.body;
         const senderId = req.auth.userId;
+        const chatMsg = { senderId, senderName, senderAvatar, text, timestamp: new Date() };
 
         await Meeting.updateOne(
             { roomId },
-            { $push: { chat: { senderId, senderName, senderAvatar, text } } }
+            { $push: { chat: chatMsg } }
         );
+
+        // Broadcast via Pusher
+        pusher.trigger(`room-${roomId}`, 'chat-message', chatMsg).catch(err => {
+            console.error('[PUSHER] Trigger error:', err);
+        });
+
         res.json({ success: true });
     } catch (err) {
         res.status(500).json({ error: 'Failed to save message' });

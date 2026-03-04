@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
-import AgoraRTM from 'agora-rtm-sdk';
+import Pusher from 'pusher-js';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useUser, useAuth } from '@clerk/clerk-react';
 import { cn } from './utils';
@@ -34,7 +34,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const [panel, setPanel] = useState(null);
     const panelRef = useRef(null);
     const [unread, setUnread] = useState(0);
-    const rtmQueue = useRef([]);  // messages buffered before RTM is ready
     const [handRaised, setHandRaised] = useState(false);
     const [isSharing, setIsSharing] = useState(false);
     const [activeSpeaker, setActiveSpeaker] = useState(null);
@@ -59,7 +58,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
     // Refs
     const rtc = useRef(null);
-    const rtm = useRef(null);
     const localTracks = useRef({ audio: null, video: null });
     const screenTrack = useRef(null);
     const rtmReady = useRef(false);
@@ -79,32 +77,35 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
 
     const upsertUser = (id, part) => {
+        const strId = String(id);
+        const numId = Number(id);
+        // CRITICAL: Never add yourself to the remote list
+        if (strId === String(user?.id) || (!isNaN(numId) && numId === numericUid)) return;
+
         setRemoteUsers(prev => {
-            // String-safe comparison — Agora RTC gives Numbers, RTM publisher gives strings
-            const idx = prev.findIndex(u => String(u.id) === String(id));
+            const idx = prev.findIndex(u => String(u.id) === strId || (u.agoraUid && u.agoraUid === numId));
             if (idx > -1) {
                 const updated = [...prev];
                 updated[idx] = { ...updated[idx], ...part };
                 return updated;
             }
-            return [...prev, { id, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...part }];
+            return [...prev, { id: strId, agoraUid: !isNaN(numId) ? numId : null, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...part }];
         });
     };
 
-    // Merge profile into user matched by numericUid, cleaning up any ghost entries created before RTC
     const mergeProfile = (uid, profile) => {
+        const numId = Number(uid);
+        const strId = String(uid);
+        if (numId === numericUid || strId === String(user?.id)) return;
+
         setRemoteUsers(prev => {
-            const numId = Number(uid);
-            const strId = String(uid);
-            // Find by numeric OR string match
-            const idx = prev.findIndex(u => u.id === numId || u.id === strId || String(u.id) === strId);
+            const idx = prev.findIndex(u => u.agoraUid === numId || String(u.id) === strId);
             if (idx > -1) {
                 const updated = [...prev];
                 updated[idx] = { ...updated[idx], ...profile };
                 return updated;
             }
-            // No existing entry yet — create placeholder; RTC track will merge in later
-            return [...prev, { id: numId || strId, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...profile }];
+            return [...prev, { id: strId, agoraUid: numId, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...profile }];
         });
     };
 
@@ -131,7 +132,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         }, 1000);
     };
 
-    // --- AI Logic ---
     const runSummarize = async (transcriptData) => {
         setBotPhase('summarizing');
         setPhaseMsg('Generating AI meeting summary…');
@@ -221,203 +221,49 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         }
     };
 
-    // --- Agora Logic ---
-    useEffect(() => {
-        if (!APP_ID) return;
-        let isMounted = true;
-
-        const init = async () => {
-            try {
-                rtc.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
-                rtc.current.enableAudioVolumeIndicator();
-                rtm.current = new AgoraRTM.RTM(APP_ID, sessionID);
-
-                rtc.current.on('user-published', async (u, type) => {
-                    if (!isMounted) return;
-                    await rtc.current.subscribe(u, type);
-                    upsertUser(u.uid, { [type === 'video' ? 'videoTrack' : 'audioTrack']: u[type === 'video' ? 'videoTrack' : 'audioTrack'] });
-                    if (type === 'audio') {
-                        u.audioTrack.play();
-                        // Ask all peers to re-broadcast their profile so we always get name+avatar
-                        // even if their RTM profile arrived before this RTC track came in
-                        if (rtmReady.current && rtm.current) {
-                            rtm.current.publish(roomId, JSON.stringify({ type: 'request_profile' })).catch(() => { });
-                        }
-                        // If recording is active, wire this remote audio into the mix
-                        if (audioContext.current && recDestination.current && u.audioTrack) {
-                            try {
-                                const ms = u.audioTrack.getMediaStreamTrack();
-                                if (ms) {
-                                    const src = audioContext.current.createMediaStreamSource(new MediaStream([ms]));
-                                    src.connect(recDestination.current);
-                                    connectedNodes.current[u.uid] = src;
-                                }
-                            } catch (e) { console.warn('[REC] Failed to wire remote track:', e); }
-                        }
-                    }
-                });
-
-                rtc.current.on('user-unpublished', (u, type) => {
-                    if (!isMounted) return;
-                    upsertUser(u.uid, { [type === 'video' ? 'videoTrack' : 'audioTrack']: null });
-                    // Disconnect from recording mix
-                    if (type === 'audio' && connectedNodes.current[u.uid]) {
-                        try { connectedNodes.current[u.uid].disconnect(); } catch (e) { }
-                        delete connectedNodes.current[u.uid];
-                    }
-                });
-
-                rtc.current.on('user-left', (u) => setRemoteUsers(p => p.filter(x => x.id !== u.uid)));
-
-                rtc.current.on('volume-indicator', (volumes) => {
-                    const highest = volumes.reduce((prev, curr) => (prev.level > curr.level) ? prev : curr, { uid: 0, level: 0 });
-                    if (highest.level > 10) setActiveSpeaker(highest.uid === numericUid ? 'me' : highest.uid);
-                    else setActiveSpeaker(null);
-                });
-
-                const broadcastProfile = () => {
-                    if (isMounted && rtm.current) {
-                        rtm.current.publish(roomId, JSON.stringify({ type: 'profile', uid: numericUid, name: user?.fullName || 'Guest', pic: user?.imageUrl })).catch(() => { });
-                    }
-                };
-
-                rtm.current.on('message', async (ev) => {
-                    if (!isMounted) return;
-                    try {
-                        const rawMsg = ev.message;
-                        const msgStr = typeof rawMsg === 'string' ? rawMsg : new TextDecoder().decode(rawMsg);
-                        const data = JSON.parse(msgStr);
-                        if (data.type === 'profile') {
-                            mergeProfile(data.uid || ev.publisher, { userName: data.name, userAvatar: data.pic });
-                        }
-                        else if (data.type === 'request_profile') {
-                            // Someone just had an RTC peer join — re-broadcast our profile so they can see us
-                            broadcastProfile();
-                        }
-                        else if (data.type === 'chat') {
-                            setMessages(p => [...p, { id: Date.now(), from: ev.publisher, userName: data.name, text: data.text, userAvatar: data.pic }]);
-                            // Use panelRef to avoid stale closure — panel state captured at listener-creation time would always be null
-                            if (panelRef.current !== 'chat') setUnread(v => v + 1);
-                        } else if (data.type === 'react') setReactions(p => [...p, { id: Date.now(), key: data.key, name: data.name }]);
-                        else if (data.type === 'state') setPeerStates(p => ({ ...p, [data.uid || ev.publisher]: data.state }));
-                        else if (data.type === 'force_mute' && String(data.target) === String(numericUid)) {
-                            setMicOn(false);
-                            setAdminMuted(true);
-                            if (localTracks.current.audio) localTracks.current.audio.setEnabled(false);
-                            syncState({ muted: true, handRaised, adminMuted: true });
-                        }
-                        else if (data.type === 'force_unmute' && String(data.target) === String(numericUid)) {
-                            setAdminMuted(false);
-                        }
-                        else if (data.type === 'end_meeting') {
-                            onLeave();
-                        }
-                    } catch (e) {
-                        console.error('[RTM] Msg Parse/Process Error:', e, 'Raw Event:', ev, 'Message:', ev?.message);
-                    }
-                });
-
-                rtm.current.on('presence', (ev) => { if (isMounted && (ev.eventType === 'SNAPSHOT' || ev.eventType === 'REMOTE_JOIN')) broadcastProfile(); });
-
-                // Start Join
-                await rtc.current.join(APP_ID, roomId, null, numericUid);
-                const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks();
-                localTracks.current = { audio, video };
-                await rtc.current.publish([audio, video]);
-                audio.setEnabled(micOn);
-                video.setEnabled(videoOn);
-
-                console.log('[RTM] Logging in...');
-                await rtm.current.login();
-                await rtm.current.subscribe(roomId, { withMessage: true, withPresence: true });
-                rtmReady.current = true;
-                broadcastProfile();
-                const t = setInterval(() => { if (isMounted) broadcastProfile(); }, 4000);
-
-                // Notify Join
-                const token = await getToken();
-                const res = await fetch(`${import.meta.env.VITE_API_URL}/meetings/join`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-session-id': sessionID },
-                    body: JSON.stringify({ roomId, userName: user?.fullName, userAvatar: user?.imageUrl }),
-                });
-                const joinData = await res.json();
-                if (joinData.isHost) {
-                    setIsHost(true);
-                    sessionStorage.setItem(`host_${roomId}`, 'true');
-                }
-                if (joinData.meeting?.chat) {
-                    setMessages(joinData.meeting.chat.map(m => ({ id: m._id, from: m.senderId, userName: m.senderName, text: m.text, userAvatar: m.senderAvatar, timestamp: m.timestamp })));
-                }
-
-                return () => {
-                    clearInterval(t);
-                    if (rtc.current) rtc.current.leave();
-                    if (rtm.current) rtm.current.logout();
-                };
-
-            } catch (e) { console.error("Agora Init Error", e); }
-        };
-
-        const initPromise = init();
-        return () => {
-            isMounted = false;
-            rtmReady.current = false;
-            initPromise.then(fn => fn && fn());
-            if (localTracks.current.audio) localTracks.current.audio.close();
-            if (localTracks.current.video) localTracks.current.video.close();
-        };
-    }, [roomId]);
-
-    // Sync panelRef whenever panel state changes so the RTM listener always sees current value
-    useEffect(() => { panelRef.current = panel; }, [panel]);
-
     // --- Communication ---
-    const rtmPublish = (payload) => {
-        if (!rtm.current) return;
-        if (!rtmReady.current) {
-            // RTM not ready yet — queue and retry shortly
-            rtmQueue.current.push(payload);
-            return;
-        }
-        rtm.current.publish(roomId, JSON.stringify(payload)).catch((e) => {
-            console.error('[RTM] Publish Error:', e, payload);
-        });
+    const broadcastProfile = async () => {
+        if (!rtmReady.current) return;
+        const token = await getToken();
+        fetch(`${import.meta.env.VITE_API_URL}/meetings/profile/${roomId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ uid: numericUid, name: user?.fullName || 'Guest', pic: user?.imageUrl })
+        }).catch(() => { });
     };
 
-    // Flush the queue once RTM comes online
-    useEffect(() => {
-        if (rtmReady.current && rtmQueue.current.length > 0) {
-            const pending = [...rtmQueue.current];
-            rtmQueue.current = [];
-            pending.forEach(p => rtmPublish(p));
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [rtmReady.current]);
-
-    const syncState = (state) => {
+    const syncState = async (state) => {
         const fullState = { ...state, adminMuted };
         setPeerStates(p => ({ ...p, [numericUid]: fullState }));
-        rtmPublish({ type: 'state', uid: numericUid, state: fullState });
+        const token = await getToken();
+        fetch(`${import.meta.env.VITE_API_URL}/meetings/state/${roomId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ uid: numericUid, state: fullState })
+        }).catch(() => { });
     };
 
     const sendMsg = async (txt) => {
         if (!txt?.trim()) return;
-        const msg = { type: 'chat', text: txt, name: user?.fullName || user?.firstName || 'Guest', pic: user?.imageUrl };
-        if (rtmReady.current) rtmPublish(msg);
-        setMessages(p => [...p, { id: Date.now(), from: 'me', userName: msg.name, text: msg.text, userAvatar: msg.pic }]);
+        const msg = { senderName: user?.fullName || user?.firstName || 'Guest', senderAvatar: user?.imageUrl, text: txt };
+        setMessages(p => [...p, { id: Date.now(), from: user?.id || 'me', userName: msg.senderName, text: txt, userAvatar: msg.senderAvatar }]);
         const token = await getToken();
         fetch(`${import.meta.env.VITE_API_URL}/meetings/chat/${roomId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ text: txt, senderName: msg.name, senderAvatar: msg.pic })
+            body: JSON.stringify({ text: txt, senderName: msg.senderName, senderAvatar: msg.senderAvatar })
         }).catch(() => { });
     };
 
-    const sendReact = (key) => {
+    const sendReact = async (key) => {
         const name = user?.fullName || user?.firstName || 'Guest';
-        rtmPublish({ type: 'react', key, name });
         setReactions(p => [...p, { id: Date.now(), key, name: 'You' }]);
+        const token = await getToken();
+        fetch(`${import.meta.env.VITE_API_URL}/meetings/react/${roomId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ key, name })
+        }).catch(() => { });
     };
 
     // --- Control Handlers ---
@@ -425,14 +271,27 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const toggleVideo = () => { setVideoOn(prev => !prev); localTracks.current.video?.setEnabled(!videoOn); };
     const toggleHand = () => { setHandRaised(prev => !prev); syncState({ muted: !micOn, handRaised: !handRaised, adminMuted }); };
 
-    const forceMutePeer = (targetUid) => {
-        if (!isHost) return;
-        rtmPublish({ type: 'force_mute', target: String(targetUid) });
+    const forceMutePeer = async (targetUid) => {
+        if (!isHost || !targetUid) {
+            console.warn('[HOST] Cannot mute: ', { isHost, targetUid });
+            return;
+        }
+        const token = await getToken();
+        fetch(`${import.meta.env.VITE_API_URL}/meetings/admin-mute/${roomId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ targetUid, action: 'mute' })
+        }).catch(() => { });
     };
 
-    const forceUnmutePeer = (targetUid) => {
-        if (!isHost) return;
-        rtmPublish({ type: 'force_unmute', target: String(targetUid) });
+    const forceUnmutePeer = async (targetUid) => {
+        if (!isHost || !targetUid) return;
+        const token = await getToken();
+        fetch(`${import.meta.env.VITE_API_URL}/meetings/admin-mute/${roomId}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ targetUid, action: 'unmute' })
+        }).catch(() => { });
     };
 
     const handleLeave = async () => {
@@ -440,7 +299,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         if (botRunning) botFetch(`/stop/${roomId}`, { method: 'DELETE' }).catch(() => { });
         const token = await getToken();
         await fetch(`${import.meta.env.VITE_API_URL}/meetings/end/${roomId}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
-        if (isHost) rtmPublish({ type: 'end_meeting' });
         onLeave();
     };
 
@@ -470,34 +328,256 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         } catch (err) { setIsSharing(false); }
     };
 
-    // Recording logic
+    // --- Agora Logic ---
+    useEffect(() => {
+        if (!APP_ID) return;
+        let isMounted = true;
+        let pusherInstance = null;
+        let channel = null;
+
+        const init = async () => {
+            try {
+                rtc.current = AgoraRTC.createClient({ mode: 'rtc', codec: 'vp8' });
+                rtc.current.enableAudioVolumeIndicator();
+
+                // Setup Pusher - ONLY if keys are present
+                const pKey = import.meta.env.VITE_PUSHER_KEY;
+                const pCluster = import.meta.env.VITE_PUSHER_CLUSTER;
+
+                if (pKey && pCluster) {
+                    pusherInstance = new Pusher(pKey, {
+                        cluster: pCluster,
+                        encrypted: true
+                    });
+                    channel = pusherInstance.subscribe(`room-${roomId}`);
+
+                    channel.bind('chat-message', (data) => {
+                        if (!isMounted) return;
+                        if (String(data.senderId) !== String(user?.id)) {
+                            setMessages(p => {
+                                const exists = p.some(m => m.timestamp === data.timestamp || (m.text === data.text && m.from === data.senderId));
+                                if (exists) return p;
+                                return [...p, { id: Date.now(), from: data.senderId, userName: data.senderName, text: data.text, userAvatar: data.senderAvatar }];
+                            });
+                            if (panelRef.current !== 'chat') setUnread(v => v + 1);
+                        }
+                    });
+
+                    channel.bind('react', (data) => {
+                        if (!isMounted) return;
+                        setReactions(p => [...p, { id: Date.now(), key: data.key, name: data.name }]);
+                    });
+
+                    channel.bind('profile', (data) => {
+                        if (!isMounted) return;
+                        mergeProfile(data.uid, { userName: data.name, userAvatar: data.pic });
+                    });
+
+                    channel.bind('state', (data) => {
+                        if (!isMounted) return;
+                        if (String(data.uid) !== String(numericUid)) {
+                            setPeerStates(p => ({ ...p, [data.uid]: data.state }));
+                        }
+                    });
+
+                    channel.bind('admin-mute', (data) => {
+                        if (!isMounted) return;
+                        if (Number(data.targetUid) === numericUid) {
+                            const shouldMute = data.action === 'mute';
+                            setAdminMuted(shouldMute);
+                            if (shouldMute) {
+                                setMicOn(false);
+                                localTracks.current.audio?.setEnabled(false);
+                            }
+                        }
+                    });
+                } else {
+                    console.log('[CHAT] Pusher keys missing, using polling fallback');
+                }
+
+                rtc.current.on('user-published', async (u, type) => {
+                    if (!isMounted) return;
+                    await rtc.current.subscribe(u, type);
+                    upsertUser(u.uid, { [type === 'video' ? 'videoTrack' : 'audioTrack']: u[type === 'video' ? 'videoTrack' : 'audioTrack'] });
+                    if (type === 'audio') {
+                        u.audioTrack.play();
+                        broadcastProfile();
+                        if (audioContext.current && recDestination.current && u.audioTrack) {
+                            try {
+                                const ms = u.audioTrack.getMediaStreamTrack();
+                                if (ms) {
+                                    const src = audioContext.current.createMediaStreamSource(new MediaStream([ms]));
+                                    src.connect(recDestination.current);
+                                    connectedNodes.current[u.uid] = src;
+                                }
+                            } catch (e) { }
+                        }
+                    }
+                });
+
+                rtc.current.on('user-unpublished', (u, type) => {
+                    if (!isMounted) return;
+                    upsertUser(u.uid, { [type === 'video' ? 'videoTrack' : 'audioTrack']: null });
+                    if (type === 'audio' && connectedNodes.current[u.uid]) {
+                        try { connectedNodes.current[u.uid].disconnect(); } catch (e) { }
+                        delete connectedNodes.current[u.uid];
+                    }
+                });
+
+                rtc.current.on('user-left', (u) => {
+                    setRemoteUsers(prev => prev.filter(x => String(x.id) !== String(u.uid) && x.agoraUid !== Number(u.uid)));
+                });
+
+                rtc.current.on('volume-indicator', (volumes) => {
+                    const highest = volumes.reduce((prev, curr) => (prev.level > curr.level) ? prev : curr, { uid: 0, level: 0 });
+                    if (highest.level > 10) setActiveSpeaker(highest.uid === numericUid ? 'me' : highest.uid);
+                    else setActiveSpeaker(null);
+                });
+
+                // Start RTC Join
+                await rtc.current.join(APP_ID, roomId, null, numericUid);
+                const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks();
+                localTracks.current = { audio, video };
+                await rtc.current.publish([audio, video]);
+                audio.setEnabled(micOn);
+                video.setEnabled(videoOn);
+
+                rtmReady.current = true;
+                broadcastProfile();
+                const t = setInterval(() => { if (isMounted) broadcastProfile(); }, 10000);
+
+                // Notify Join
+                const token = await getToken();
+                const res = await fetch(`${import.meta.env.VITE_API_URL}/meetings/join`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-session-id': sessionID },
+                    body: JSON.stringify({ roomId, userName: user?.fullName, userAvatar: user?.imageUrl, agoraUid: numericUid }),
+                });
+                const joinData = await res.json();
+                if (joinData.isHost) {
+                    setIsHost(true);
+                    sessionStorage.setItem(`host_${roomId}`, 'true');
+                }
+
+                if (joinData.meeting?.chat) {
+                    setMessages(joinData.meeting.chat.map(m => ({ id: m._id, from: m.senderId, userName: m.senderName, text: m.text, userAvatar: m.senderAvatar, timestamp: m.timestamp })));
+                }
+
+                if (joinData.meeting?.participants) {
+                    const others = joinData.meeting.participants.filter(p => p.isActive && String(p.userId) !== String(user?.id));
+                    setRemoteUsers(prev => {
+                        const next = [...prev];
+                        others.forEach(o => {
+                            const exists = next.findIndex(p => String(p.id) === String(o.userId) || (o.agoraUid && p.agoraUid === o.agoraUid));
+                            if (exists === -1) {
+                                next.push({ id: o.userId, agoraUid: o.agoraUid, userName: o.name, userAvatar: o.avatar, videoTrack: null, audioTrack: null });
+                            } else {
+                                next[exists] = { ...next[exists], agoraUid: o.agoraUid, userName: o.name, userAvatar: o.avatar };
+                            }
+                        });
+                        return next;
+                    });
+                }
+
+                return () => {
+                    clearInterval(t);
+                    if (rtc.current) rtc.current.leave();
+                    if (pusherInstance) pusherInstance.disconnect();
+                };
+
+            } catch (e) { console.error("Agora/Pusher Init Error", e); }
+        };
+
+        const initPromise = init();
+        return () => {
+            isMounted = false;
+            initPromise.then(fn => fn && fn());
+            if (localTracks.current.audio) localTracks.current.audio.close();
+            if (localTracks.current.video) localTracks.current.video.close();
+        };
+    }, [roomId]);
+
+    // --- Communication Fallback ---
+    useEffect(() => {
+        const pKey = import.meta.env.VITE_PUSHER_KEY;
+        const poll = async () => {
+            try {
+                const token = await getToken();
+                // Chat Polling
+                const chatRes = await fetch(`${import.meta.env.VITE_API_URL}/meetings/chat/${roomId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (chatRes.ok) {
+                    const dbMessages = await chatRes.json();
+                    setMessages(p => {
+                        const newMsgs = dbMessages.filter(db => !p.some(local =>
+                            (local.text === db.text && (String(local.from) === String(db.senderId) || local.from === 'me'))
+                        ));
+                        if (newMsgs.length > 0) {
+                            if (panelRef.current !== 'chat') setUnread(v => v + newMsgs.length);
+                            return [...p, ...newMsgs.map(m => ({ id: m._id || Date.now() + Math.random(), from: m.senderId, userName: m.senderName, text: m.text, userAvatar: m.senderAvatar }))];
+                        }
+                        return p;
+                    });
+                }
+
+                // Participant Polling
+                const partRes = await fetch(`${import.meta.env.VITE_API_URL}/meetings/participants/${roomId}`, {
+                    headers: { Authorization: `Bearer ${token}` }
+                });
+                if (partRes.ok) {
+                    const dbParts = await partRes.json();
+                    const activeOthers = dbParts.filter(p => p.isActive && String(p.userId) !== String(user?.id));
+                    setRemoteUsers(prev => {
+                        let changed = false;
+                        const next = [...prev];
+                        activeOthers.forEach(db => {
+                            // Match by Clerk ID OR Agora UID
+                            const idx = next.findIndex(n => String(n.id) === String(db.userId) || (db.agoraUid && n.agoraUid === db.agoraUid));
+
+                            if (idx === -1) {
+                                next.push({ id: db.userId, agoraUid: db.agoraUid, userName: db.name, userAvatar: db.avatar, videoTrack: null, audioTrack: null });
+                                changed = true;
+                            } else {
+                                // Merge DB data into existing entry and stabilize ID
+                                if (next[idx].id !== db.userId || next[idx].agoraUid !== db.agoraUid) {
+                                    next[idx] = { ...next[idx], id: db.userId, agoraUid: db.agoraUid, userName: db.name, userAvatar: db.avatar };
+                                    changed = true;
+                                }
+                            }
+                        });
+                        // Also cleanup anyone no longer in activeOthers
+                        const result = next.filter(n => activeOthers.some(o => String(o.userId) === String(n.id) || (n.agoraUid && o.agoraUid === n.agoraUid)));
+                        if (result.length !== next.length) changed = true;
+
+                        return changed ? result : prev;
+                    });
+                }
+            } catch (err) { }
+        };
+
+        const t = setInterval(poll, pKey ? 10000 : 3000);
+        return () => clearInterval(t);
+    }, [roomId]);
+
+    useEffect(() => { panelRef.current = panel; }, [panel]);
     useEffect(() => { window.__getClerkToken = getToken; }, [getToken]);
 
     const triggerAI = async (recordingUrl) => {
-        // Store URL first so toggleBot can read it
         localStorage.setItem(`last_rec_url_${roomId}`, recordingUrl);
-
         setBotPhase('starting');
         setPhaseMsg('Sending to AI for transcription…');
-
         try {
             const res = await botFetch('/start', {
                 method: 'POST',
                 body: JSON.stringify({ meetingId: roomId, recordingUrl })
             });
-
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                console.error('[AI] Start failed:', errData);
-                throw new Error(errData.error || 'Transcription failed to start');
-            }
-
+            if (!res.ok) throw new Error('Transcription failed to start');
             setBotRunning(true);
             setBotPhase('fetching');
             setPhaseMsg('Transcribing meeting…');
             await tryFetchTranscript(1);
         } catch (err) {
-            console.error('[AI] triggerAI error:', err);
             setBotPhase('error');
             setPhaseMsg(`AI failed: ${err.message}`);
             setTimeout(() => setBotPhase('idle'), 5000);
@@ -506,8 +586,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
     const uploadRecording = async (blob) => {
         if (!blob || blob.size === 0) {
-            console.error('[REC] Empty blob — nothing to upload');
-            setBotPhase('error');
             setPhaseMsg('Recording was empty. Try again.');
             setTimeout(() => setBotPhase('idle'), 4000);
             return;
@@ -672,13 +750,10 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         a.download = `smartmeet-transcript-${roomId}.${ext}`;
         a.click();
     };
-
-    // --- Render Logic ---
     const sharingPeerId = Object.entries(peerStates).find(([, s]) => s?.screenSharing)?.[0];
     const sharingRemoteUser = remoteUsers.find(u => String(u.id) === String(sharingPeerId));
     const anyoneSharing = isSharing || !!sharingRemoteUser;
     const totalPeople = remoteUsers.length + 1;
-
     const myData = {
         id: user?.id || 'guest',
         userName: user?.fullName || 'Guest',
@@ -686,7 +761,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         videoTrack: localTracks.current.video,
         videoOn: videoOn
     };
-
     return (
         <div className={cn("h-screen flex flex-col overflow-hidden font-sans transition-colors duration-500", D ? "bg-premium-bg text-gray-100" : "bg-gray-100 text-gray-900")}>
 
@@ -721,8 +795,17 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                                 </div>
 
                                 {remoteUsers.map(u => (
-                                    <div key={u.id} className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: activeSpeaker === u.id ? -1 : 1 }}>
-                                        <UserTile user={u} isDark={D} peerState={peerStates[u.id]} activeSpeaker={activeSpeaker === u.id} isHost={isHost} onForceMute={() => forceMutePeer(u.id)} onForceUnmute={() => forceUnmutePeer(u.id)} small />
+                                    <div key={u.id} className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: (activeSpeaker === u.agoraUid || activeSpeaker === u.id) ? -1 : 1 }}>
+                                        <UserTile
+                                            user={u}
+                                            isDark={D}
+                                            peerState={peerStates[u.agoraUid || u.id]}
+                                            activeSpeaker={activeSpeaker === u.agoraUid || activeSpeaker === u.id}
+                                            isHost={isHost}
+                                            onForceMute={() => forceMutePeer(u.agoraUid)}
+                                            onForceUnmute={() => forceUnmutePeer(u.agoraUid)}
+                                            small
+                                        />
                                     </div>
                                 ))}
                             </div>
@@ -733,11 +816,22 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         <div className={cn("transition-all duration-500", totalPeople === 1 ? "w-full max-w-4xl aspect-video" : totalPeople === 2 ? "w-full md:w-[calc(50%-1rem)] aspect-video" : "w-[calc(45%)] md:w-[calc(30%)] aspect-video")}>
                             <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} activeSpeaker={activeSpeaker === 'me'} />
                         </div>
-                        {remoteUsers.map(u => (
-                            <div key={u.id} className={cn("transition-all duration-500", totalPeople === 2 ? "w-full md:w-[calc(50%-1rem)] aspect-video" : "w-[calc(45%)] md:w-[calc(30%)] aspect-video")}>
-                                <UserTile user={u} isDark={D} peerState={peerStates[u.id]} activeSpeaker={activeSpeaker === u.id} isHost={isHost} onForceMute={() => forceMutePeer(u.id)} onForceUnmute={() => forceUnmutePeer(u.id)} />
-                            </div>
-                        ))}
+                        {remoteUsers.map(u => {
+                            if (String(u.id) === String(user?.id)) return null;
+                            return (
+                                <div key={u.id} className={cn("transition-all duration-500", totalPeople === 2 ? "w-full md:w-[calc(48%-1rem)] max-w-[600px] aspect-video" : "w-[calc(45%)] md:w-[calc(30%)] aspect-video")}>
+                                    <UserTile
+                                        user={u}
+                                        isDark={D}
+                                        peerState={peerStates[u.agoraUid || u.id]}
+                                        activeSpeaker={activeSpeaker === u.agoraUid || activeSpeaker === u.id}
+                                        isHost={isHost}
+                                        onForceMute={() => forceMutePeer(u.agoraUid || u.id)}
+                                        onForceUnmute={() => forceUnmutePeer(u.agoraUid || u.id)}
+                                    />
+                                </div>
+                            );
+                        })}
                     </div>
                 )}
                 <BotHUD botPhase={botPhase} phaseMsg={phaseMsg} countdown={countdown} />

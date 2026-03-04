@@ -1,5 +1,4 @@
-import dotenv from 'dotenv';
-dotenv.config();
+import 'dotenv/config';
 
 import express from 'express';
 import cors from 'cors';
@@ -46,6 +45,15 @@ app.use('/api/meetings', meetingRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/vexa', vexaRoutes);
 app.get('/health', (req, res) => res.json({ status: 'ok', ts: Date.now() }));
+app.get('/test-db/:roomId', async (req, res) => {
+    try {
+        const Meeting = (await import('./models/Meeting.js')).default;
+        const m = await Meeting.findOne({ roomId: req.params.roomId }).lean();
+        res.json(m || { error: 'Not Found' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 app.get('/cache-stats', (req, res) => res.json(getCacheStats()));
 app.get('/debug', (req, res) => res.json({
     env: {
@@ -58,6 +66,11 @@ app.get('/debug', (req, res) => res.json({
     },
     mongo: mongoose.connection.readyState,
 }));
+
+app.use((err, req, res, next) => {
+    console.error('[SERVER ERROR]', err);
+    res.status(500).json({ error: 'Internal Server Error', detail: err.message });
+});
 
 const PORT = process.env.PORT || 5000;
 const server = app.listen(PORT, '0.0.0.0', () => {
