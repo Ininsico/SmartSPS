@@ -191,8 +191,9 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
 
 export const participantLeft = async ({ roomId, userId, socketId }) => {
     patchCachedParticipant(roomId, userId, { isActive: false, socketId: null });
+    const query = socketId ? { roomId, 'participants.socketId': socketId } : { roomId, 'participants.userId': userId };
     Meeting.updateOne(
-        { roomId, 'participants.socketId': socketId },
+        query,
         { $set: { 'participants.$.isActive': false, 'participants.$.leftAt': new Date() } }
     ).catch(() => { });
 };
@@ -203,6 +204,17 @@ export const reassignHost = async ({ roomId, newHostSocketId, newHostUserId }) =
         { roomId },
         { $set: { hostId: newHostUserId, hostSocketId: newHostSocketId } }
     ).catch(() => { });
+};
+
+export const leaveMeeting = async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const userId = req.auth.userId;
+        await participantLeft({ roomId, userId });
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to leave' });
+    }
 };
 
 export const finishMeeting = async (req, res) => {

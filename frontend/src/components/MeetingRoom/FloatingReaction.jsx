@@ -25,7 +25,7 @@ const FloatingReaction = ({ reactionKey, name, onDone }) => {
             style={{ right: `${Math.random() * 200 + 40}px` }}
         >
             <div className={cn("mb-1 p-3 rounded-full bg-black/40 backdrop-blur-sm shadow-2xl", r.color)}>
-                <Icon size={32} fill="currentColor" />
+                <Icon size={28} />
             </div>
             <div className="text-[10px] text-white bg-black/60 rounded-md px-2 py-0.5 font-bold uppercase tracking-wider">
                 {name}

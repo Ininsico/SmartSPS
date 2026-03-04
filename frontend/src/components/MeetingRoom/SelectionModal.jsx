@@ -30,7 +30,7 @@ const SelectionModal = ({ options, onSelect, onClose, isDark }) => (
                             o.color
                         )}
                     >
-                        <Icon size={32} fill="currentColor" />
+                        <Icon size={28} />
                     </button>
                 );
             })}

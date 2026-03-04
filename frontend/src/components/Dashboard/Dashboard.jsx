@@ -572,6 +572,8 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                     toggleTheme={() => setIsDarkMode(!isDarkMode)}
                     onSignOut={onSignOut}
                     onMenuClick={() => setSidebarOpen(true)}
+                    searchQuery={searchQuery}
+                    setSearchQuery={setSearchQuery}
                 />
 
                 <div className="flex-1 overflow-y-auto px-6 py-8 md:px-12 md:py-10 flex flex-col gap-8">
@@ -708,21 +710,7 @@ const Dashboard = ({ onNewMeeting, onSignOut, isDarkMode, setIsDarkMode }) => {
                                 </div>
                             </section>
 
-                            <section className="flex items-center gap-4">
-                                <div className={cn(
-                                    "flex-1 max-w-[400px] flex items-center gap-3 px-4 h-11 rounded-xl border transition-shadow focus-within:ring-2 focus-within:ring-premium-accent/40",
-                                    isDarkMode ? "bg-white/5 border-white/10" : "bg-gray-50 border-gray-200 shadow-sm"
-                                )}>
-                                    <Search size={18} className="opacity-30" />
-                                    <input
-                                        type="text"
-                                        placeholder="Search meetings..."
-                                        className="bg-transparent border-none outline-none text-sm w-full font-medium"
-                                        value={searchQuery}
-                                        onChange={(e) => setSearchQuery(e.target.value)}
-                                    />
-                                </div>
-                            </section>
+
 
                             {loading ? (
                                 <div className="flex flex-col items-center justify-center h-[400px] gap-4 opacity-40">

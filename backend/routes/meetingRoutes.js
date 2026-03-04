@@ -1,7 +1,7 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import Meeting from '../models/Meeting.js';
-import { getMeetingHistory, scheduleMeeting, joinMeeting, finishMeeting, saveChatMessage } from '../controllers/meetingController.js';
+import { getMeetingHistory, scheduleMeeting, joinMeeting, finishMeeting, leaveMeeting, saveChatMessage } from '../controllers/meetingController.js';
 import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
 import pusher from '../pusher.js';
 
@@ -10,6 +10,7 @@ const router = express.Router();
 router.get('/history', ClerkExpressWithAuth(), getMeetingHistory);
 router.post('/schedule', ClerkExpressWithAuth(), scheduleMeeting);
 router.post('/join', ClerkExpressWithAuth(), joinMeeting);
+router.post('/leave/:roomId', ClerkExpressWithAuth(), leaveMeeting);
 router.post('/end/:roomId', ClerkExpressWithAuth(), finishMeeting);
 router.post('/chat/:roomId', ClerkExpressWithAuth(), saveChatMessage);
 router.get('/chat/:roomId', ClerkExpressWithAuth(), async (req, res) => {

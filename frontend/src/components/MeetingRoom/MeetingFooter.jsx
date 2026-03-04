@@ -1,7 +1,7 @@
 import React from 'react';
 import {
     Mic, MicOff, Video as VideoIcon, VideoOff, ScreenShare,
-    Hand, Circle, MessageSquare, PhoneOff
+    Hand, Circle, MessageSquare, PhoneOff, Smile
 } from 'lucide-react';
 import { cn } from '../../utils';
 
@@ -97,7 +97,7 @@ const MeetingFooter = ({
                         D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"
                     )}
                 >
-                    <span className="text-xl leading-none">😊</span>
+                    <Smile size={20} />
                 </button>
 
                 <button
@@ -117,10 +117,10 @@ const MeetingFooter = ({
 
                 <button
                     onClick={handleLeave}
-                    className="h-11 px-6 rounded-xl bg-black hover:bg-black/90 text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-90 border-none cursor-pointer flex items-center gap-2"
+                    className="h-11 px-4 sm:px-6 rounded-xl bg-black hover:bg-black/90 text-white text-[11px] font-black uppercase tracking-widest transition-all active:scale-90 border-none cursor-pointer flex items-center gap-2"
                 >
                     <PhoneOff size={16} />
-                    Leave Room
+                    <span className="hidden sm:inline">Leave Room</span>
                 </button>
             </div>
         </footer>

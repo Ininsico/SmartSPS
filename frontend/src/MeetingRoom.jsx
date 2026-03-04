@@ -79,10 +79,11 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const upsertUser = (id, part) => {
         const strId = String(id);
         const numId = Number(id);
-        // CRITICAL: Never add yourself to the remote list
         if (strId === String(user?.id) || (!isNaN(numId) && numId === numericUid)) return;
 
         setRemoteUsers(prev => {
+            // Priority 1: Match by the passed ID (could be clerk or agora)
+            // Priority 2: Match by internal agoraUid
             const idx = prev.findIndex(u => String(u.id) === strId || (u.agoraUid && u.agoraUid === numId));
             if (idx > -1) {
                 const updated = [...prev];
@@ -298,7 +299,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         if (isRecording) stopRecording();
         if (botRunning) botFetch(`/stop/${roomId}`, { method: 'DELETE' }).catch(() => { });
         const token = await getToken();
-        await fetch(`${import.meta.env.VITE_API_URL}/meetings/end/${roomId}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } });
+        await fetch(`${import.meta.env.VITE_API_URL}/meetings/leave/${roomId}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => { });
         onLeave();
     };
 
@@ -437,10 +438,13 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 // Start RTC Join
                 await rtc.current.join(APP_ID, roomId, null, numericUid);
                 const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks();
+
+                // Ensure initial state is applied BEFORE publishing
+                await audio.setEnabled(micOn);
+                await video.setEnabled(videoOn);
+
                 localTracks.current = { audio, video };
                 await rtc.current.publish([audio, video]);
-                audio.setEnabled(micOn);
-                video.setEnabled(videoOn);
 
                 rtmReady.current = true;
                 broadcastProfile();
@@ -547,10 +551,20 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                             }
                         });
                         // Also cleanup anyone no longer in activeOthers
-                        const result = next.filter(n => activeOthers.some(o => String(o.userId) === String(n.id) || (n.agoraUid && o.agoraUid === n.agoraUid)));
-                        if (result.length !== next.length) changed = true;
+                        const filtered = next.filter(n => activeOthers.some(o => String(o.userId) === String(n.id) || (n.agoraUid && o.agoraUid === n.agoraUid)));
 
-                        return changed ? result : prev;
+                        // CRITICAL DEDUPLICATION: Ensure no two tiles share the same Clerk ID or Agora UID
+                        const seenIds = new Set();
+                        const final = [];
+                        filtered.forEach(item => {
+                            if (!seenIds.has(String(item.id))) {
+                                final.push(item);
+                                seenIds.add(String(item.id));
+                            }
+                        });
+
+                        if (final.length !== next.length) changed = true;
+                        return changed ? final : prev;
                     });
                 }
             } catch (err) { }
@@ -785,9 +799,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         </div>
 
                         {/* Right Panel for Participants */}
-                        <div className="md:w-[260px] lg:w-[300px] md:flex-[1] shrink-0 flex flex-row md:flex-col gap-3 overflow-x-auto md:overflow-y-auto overflow-y-hidden md:overflow-x-hidden pb-1 md:pb-0 md:pr-2 scrollbar-thin scrollbar-thumb-gray-500/50 hover:scrollbar-thumb-gray-400 max-h-[140px] md:max-h-full">
+                        <div className="md:w-[260px] lg:w-[300px] md:flex-[1] shrink-0 flex flex-row md:flex-col gap-3 overflow-x-auto md:overflow-y-auto pb-2 md:pb-0 md:pr-2 scrollbar-none md:scrollbar-thin max-h-[160px] md:max-h-full">
                             <div className={cn(
-                                "flex md:grid gap-3 transition-all duration-300 h-full md:h-auto auto-rows-max",
+                                "flex md:grid gap-3 h-full md:h-auto auto-rows-max min-w-max md:min-w-0",
                                 totalPeople <= 3 ? "md:grid-cols-1" : "md:grid-cols-2"
                             )}>
                                 <div className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: (!activeSpeaker || activeSpeaker === 'me') ? -1 : 999 }}>
@@ -812,14 +826,20 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         </div>
                     </div>
                 ) : (
-                    <div className="flex-1 overflow-y-auto p-2 sm:p-4 scrollbar-none flex flex-wrap items-center justify-center content-center gap-4">
-                        <div className={cn("transition-all duration-500", totalPeople === 1 ? "w-full max-w-4xl aspect-video" : totalPeople === 2 ? "w-full md:w-[calc(50%-1rem)] aspect-video" : "w-[calc(45%)] md:w-[calc(30%)] aspect-video")}>
+                    <div className={cn(
+                        "flex-1 overflow-y-auto p-4 md:p-8 scrollbar-none grid place-content-center gap-4 md:gap-8 w-full mx-auto max-w-[1800px]",
+                        totalPeople === 1 ? "grid-cols-1" :
+                            totalPeople === 2 ? "grid-cols-1 md:grid-cols-2 max-w-[1400px]" :
+                                totalPeople <= 4 ? "grid-cols-2 max-w-[1400px]" :
+                                    "grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
+                    )}>
+                        <div className={cn("w-full transition-all duration-500", totalPeople === 1 ? "max-w-5xl mx-auto aspect-video" : "aspect-video")}>
                             <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} activeSpeaker={activeSpeaker === 'me'} />
                         </div>
                         {remoteUsers.map(u => {
                             if (String(u.id) === String(user?.id)) return null;
                             return (
-                                <div key={u.id} className={cn("transition-all duration-500", totalPeople === 2 ? "w-full md:w-[calc(48%-1rem)] max-w-[600px] aspect-video" : "w-[calc(45%)] md:w-[calc(30%)] aspect-video")}>
+                                <div key={u.id} className="w-full aspect-video transition-all duration-500">
                                     <UserTile
                                         user={u}
                                         isDark={D}

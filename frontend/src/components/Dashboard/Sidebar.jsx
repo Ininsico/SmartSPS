@@ -43,7 +43,6 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, 
         { icon: LayoutGrid, id: 'dashboard', active: activeSection === 'dashboard' || !activeSection, title: 'Dashboard', onClick: onHomeClick },
         { icon: Calendar, id: 'schedule', title: 'Schedule Meeting', onClick: onScheduleClick },
         { icon: Video, id: 'recordings', active: activeSection === 'recordings', title: 'Recordings', onClick: onRecordingsClick },
-        { icon: History, id: 'history', title: 'History' },
     ];
 
     return (
