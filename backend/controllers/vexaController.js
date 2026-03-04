@@ -2,12 +2,10 @@ import Transcript from '../models/Transcript.js';
 import Meeting from '../models/Meeting.js';
 
 const GLADIA_BASE = 'https://api.gladia.io/v2';
-const GLADIA_KEY = (process.env.GLADIA_API_KEY || '').trim();
-const GROQ_KEY = (process.env.GROQ_API_KEY || '').trim();
 
 const getGladiaHeaders = () => ({
     'Content-Type': 'application/json',
-    'X-Gladia-Key': GLADIA_KEY,
+    'X-Gladia-Key': (process.env.GLADIA_API_KEY || '').trim(),
 });
 
 // POST /api/vexa/start
@@ -24,8 +22,7 @@ export const startBot = async (req, res) => {
             headers: getGladiaHeaders(),
             body: JSON.stringify({
                 audio_url: recordingUrl,
-                diarization: true,
-                language_behavior: 'automatic',
+                diarization_config: { min_speakers: 1 }
             }),
         });
 
@@ -68,15 +65,26 @@ export const getTranscript = async (req, res) => {
         });
 
         const data = await r.json();
-        if (!r.ok) return res.status(r.status).json(data);
+        console.log(`[GLADIA] Status Check for ${meetingId}: ${data.status}`);
+
+        if (!r.ok) {
+            console.error('[GLADIA] Status Check Failed:', data);
+            return res.status(r.status).json(data);
+        }
 
         if (data.status === 'done') {
-            const transcriptData = data.transcription;
+            // Gladia V2 results are in data.result.transcription
+            const result = data.result || data;
+            const transcriptData = result.transcription || {};
             const utterances = transcriptData.utterances || [];
+
+            if (utterances.length === 0) {
+                console.warn('[GLADIA] Done but no utterances found in result structure', JSON.stringify(data).slice(0, 500));
+            }
 
             const segments = utterances.map(u => ({
                 speaker: `Speaker ${u.speaker ?? '?'}`,
-                text: u.content || '',
+                text: u.content || u.text || '',
                 startTime: u.start || 0,
                 endTime: u.end || 0,
             }));
@@ -88,11 +96,19 @@ export const getTranscript = async (req, res) => {
                 { status: 'completed', segments, participants, rawJson: data }
             );
 
+            console.log(`[GLADIA] Transcription Completed for ${meetingId} | Segments: ${segments.length}`);
             return res.json({ meetingId, participants, segments });
+        }
+
+        if (['error', 'failed', 'cancelled'].includes(data.status)) {
+            console.error('[GLADIA] Transcription Terminal Failure:', data);
+            await Transcript.findOneAndUpdate({ meetingId }, { status: 'failed' });
+            return res.status(500).json({ error: 'Transcription job failed on Gladia side', raw: data });
         }
 
         res.status(202).json({ status: data.status, message: 'Transcription in progress...' });
     } catch (err) {
+        console.error('[GLADIA] getTranscript Error:', err);
         res.status(500).json({ error: err.message });
     }
 };
@@ -122,26 +138,36 @@ export const summarize = async (req, res) => {
             .map(s => `[${s.speaker}]: ${s.text}`)
             .join('\n');
 
-        const prompt = `Summarize this meeting transcript as JSON. Output ONLY JSON.
-Format:
+        const prompt = `Create a highly DETAILED and COMPREHENSIVE meeting report from the following transcript.
+The report should be structured as JSON and use the exact format below.
+
+IMPORTANT INSTRUCTION: If the transcript is mostly silent, contains very few words, or lacks any meaningful conversation, return EXACTLY this JSON:
 {
-  "overview": "Concise summary",
-  "keyPoints": ["point 1", "..."],
-  "actionItems": ["task 1", "..."],
-  "decisions": ["decision 1", "..."]
+  "overview": "Not enough data collected during this meeting to create a proper summary. The recording did not capture enough conversational content or was too brief.",
+  "keyPoints": [],
+  "actionItems": [],
+  "decisions": []
 }
-Keep points brief.
+
+Otherwise, use this normal format:
+{
+  "overview": "A detailed narrative overview of the meeting (at least 3-4 paragraphs).",
+  "keyPoints": ["Highly detailed point 1 with context", "..."],
+  "actionItems": ["Specific task for person X", "..."],
+  "decisions": ["Formal decision made", "..."]
+}
+Ensure the tone is professional yet descriptive. Focus on the relationship between topics discussed.
 
 Meeting participants: ${participants.join(', ') || 'Unknown'}
 
 Transcript:
-${transcriptText.slice(0, 12000)}`;
+${transcriptText.slice(0, 32000)}`;
 
         const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${GROQ_KEY}`,
+                'Authorization': `Bearer ${(process.env.GROQ_API_KEY || '').trim()}`,
             },
             body: JSON.stringify({
                 model: 'llama-3.1-8b-instant',
@@ -153,17 +179,20 @@ ${transcriptText.slice(0, 12000)}`;
 
         if (!groqRes.ok) {
             const errBody = await groqRes.json().catch(() => ({}));
+            console.error('[GROQ] Summarization failed:', errBody);
             return res.status(groqRes.status).json({ error: 'AI Summarization failed', raw: errBody });
         }
 
         const groqData = await groqRes.json();
         const rawText = groqData.choices?.[0]?.message?.content || '';
+        console.log(`[GROQ] Raw Output for ${meetingId} (Length: ${rawText.length})`);
 
         let parsed;
         try {
             const clean = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
             parsed = JSON.parse(clean);
         } catch {
+            console.warn('[GROQ] Failed to parse JSON, falling back to raw output');
             parsed = { overview: rawText, keyPoints: [], actionItems: [], decisions: [] };
         }
 
@@ -182,6 +211,7 @@ ${transcriptText.slice(0, 12000)}`;
             { upsert: true }
         );
 
+        console.log(`[GROQ] Summary stored for ${meetingId}`);
         res.json({ meetingId, summary: summaryDoc });
     } catch (err) {
         res.status(500).json({ error: err.message });

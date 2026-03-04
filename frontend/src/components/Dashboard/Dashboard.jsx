@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Calendar, Clock, ArrowRight, Menu, Link2, Video, Trash2, Play, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Search, LayoutGrid, List, CalendarOff, Loader2, X, Clipboard, ExternalLink, Calendar, Clock, ArrowRight, Menu, Link2, Video, Trash2, Play, Sparkles, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react';
 import Sidebar from './Sidebar';
 import TopBar from './TopBar';
 import MeetingCard from './MeetingCard';

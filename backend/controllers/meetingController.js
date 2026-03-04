@@ -67,9 +67,12 @@ export const scheduleMeeting = async (req, res) => {
 
 export const joinMeeting = async (req, res) => {
     try {
-        const { roomId, userName, userAvatar, inviteUrl } = req.body;
+        const { roomId, userName: bodyName, userAvatar: bodyAvatar } = req.body;
         const userId = req.auth.userId;
+        const userName = bodyName || req.headers['x-user-name'] || 'User';
+        const userAvatar = bodyAvatar || req.headers['x-user-avatar'] || '';
         const socketId = req.headers['x-session-id'] || 'no-session';
+        const inviteUrl = `${req.headers.origin}/?room=${roomId}`;
 
         const result = await createOrJoinMeeting({ roomId, userId, userName, userAvatar, socketId, inviteUrl });
         console.log(`[JOIN] User ${userId} joined room ${roomId}`);
