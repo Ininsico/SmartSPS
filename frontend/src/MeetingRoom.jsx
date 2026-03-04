@@ -69,6 +69,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const recDestination = useRef(null);    // MediaStreamDestinationNode
     const connectedNodes = useRef({});      // uid -> source node (to disconnect later)
     const sessionID = useRef(`${user?.id || 'guest'}_${Math.floor(Math.random() * 100000)}`).current;
+    const numericUid = useRef(Math.floor(Math.random() * 1000000)).current;
 
     const D = isDarkMode;
 
@@ -204,7 +205,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     useEffect(() => {
         if (!APP_ID) return;
         let isMounted = true;
-        const numericUid = Math.floor(Math.random() * 1000000);
 
         const init = async () => {
             try {
@@ -252,20 +252,22 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
                 const broadcastProfile = () => {
                     if (isMounted && rtm.current) {
-                        rtm.current.publish(roomId, JSON.stringify({ type: 'profile', name: user?.fullName || 'Guest', pic: user?.imageUrl })).catch(() => { });
+                        rtm.current.publish(roomId, JSON.stringify({ type: 'profile', uid: numericUid, name: user?.fullName || 'Guest', pic: user?.imageUrl })).catch(() => { });
                     }
                 };
 
                 rtm.current.on('message', async (ev) => {
                     if (!isMounted) return;
                     try {
-                        const data = JSON.parse(ev.message);
-                        if (data.type === 'profile') upsertUser(ev.publisher, { userName: data.name, userAvatar: data.pic });
+                        const rawMsg = ev.message;
+                        const msgStr = typeof rawMsg === 'string' ? rawMsg : new TextDecoder().decode(rawMsg);
+                        const data = JSON.parse(msgStr);
+                        if (data.type === 'profile') upsertUser(data.uid || ev.publisher, { userName: data.name, userAvatar: data.pic });
                         else if (data.type === 'chat') {
                             setMessages(p => [...p, { id: Date.now(), from: ev.publisher, userName: data.name, text: data.text, userAvatar: data.pic }]);
                             if (panel !== 'chat') setUnread(v => v + 1);
                         } else if (data.type === 'react') setReactions(p => [...p, { id: Date.now(), key: data.key, name: data.name }]);
-                        else if (data.type === 'state') setPeerStates(p => ({ ...p, [ev.publisher]: data.state }));
+                        else if (data.type === 'state') setPeerStates(p => ({ ...p, [data.uid || ev.publisher]: data.state }));
                         else if (data.type === 'force_mute' && String(data.target) === String(numericUid)) {
                             setMicOn(false);
                             setAdminMuted(true);
@@ -278,7 +280,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         else if (data.type === 'end_meeting') {
                             onLeave();
                         }
-                    } catch (e) { }
+                    } catch (e) {
+                        console.error('[RTM] Msg Parse/Process Error:', e, 'Raw Event:', ev, 'Message:', ev?.message);
+                    }
                 });
 
                 rtm.current.on('presence', (ev) => { if (isMounted && (ev.eventType === 'SNAPSHOT' || ev.eventType === 'REMOTE_JOIN')) broadcastProfile(); });
@@ -336,13 +340,15 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     // --- Communication ---
     const rtmPublish = (payload) => {
         if (!rtm.current || !rtmReady.current) return;
-        rtm.current.publish(roomId, JSON.stringify(payload)).catch(() => { });
+        rtm.current.publish(roomId, JSON.stringify(payload)).catch((e) => {
+            console.error('[RTM] Publish Error:', e, payload);
+        });
     };
 
     const syncState = (state) => {
         const fullState = { ...state, adminMuted };
-        setPeerStates(p => ({ ...p, [sessionID]: fullState }));
-        rtmPublish({ type: 'state', state: fullState });
+        setPeerStates(p => ({ ...p, [numericUid]: fullState }));
+        rtmPublish({ type: 'state', uid: numericUid, state: fullState });
     };
 
     const sendMsg = async (txt) => {
@@ -644,21 +650,32 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
             <main className="flex-1 min-h-0 flex flex-col p-4 gap-4 overflow-hidden relative">
                 {anyoneSharing ? (
-                    <div className="flex-1 flex flex-col gap-4 min-h-0">
-                        <div className="flex-1 relative rounded-3xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10 min-h-0 group">
+                    <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-hidden">
+                        {/* Main Shared Screen */}
+                        <div className="flex-[3] lg:flex-[4] relative rounded-3xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10 min-h-0 flex flex-col group">
                             {isSharing ? <ScreenSharePlayer track={screenTrack.current} /> : <RemoteVideoPlayer videoTrack={sharingRemoteUser?.videoTrack} />}
                             <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2.5 px-4 py-2 rounded-xl bg-black/60 backdrop-blur-xl border border-white/10">
                                 <ScreenShare size={14} className="text-premium-accent" />
                                 <span className="text-xs font-bold text-white">{isSharing ? 'You are presenting' : `${sharingRemoteUser?.userName || 'Someone'} is presenting`}</span>
                             </div>
                         </div>
-                        <div className="h-32 flex gap-3 overflow-x-auto overflow-y-hidden pb-1 scrollbar-none shrink-0">
-                            <div className="w-[180px] sm:w-[220px] flex-shrink-0"><UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} activeSpeaker={activeSpeaker === 'me'} small /></div>
-                            {remoteUsers.map(u => (
-                                <div key={u.id} className="w-[180px] sm:w-[220px] flex-shrink-0">
-                                    <UserTile user={u} isDark={D} peerState={peerStates[u.id]} activeSpeaker={activeSpeaker === u.id} isHost={isHost} onForceMute={() => forceMutePeer(u.id)} onForceUnmute={() => forceUnmutePeer(u.id)} small />
+
+                        {/* Right Panel for Participants */}
+                        <div className="md:w-[260px] lg:w-[300px] md:flex-[1] shrink-0 flex flex-row md:flex-col gap-3 overflow-x-auto md:overflow-y-auto overflow-y-hidden md:overflow-x-hidden pb-1 md:pb-0 md:pr-2 scrollbar-thin scrollbar-thumb-gray-500/50 hover:scrollbar-thumb-gray-400 max-h-[140px] md:max-h-full">
+                            <div className={cn(
+                                "flex md:grid gap-3 transition-all duration-300 h-full md:h-auto auto-rows-max",
+                                totalPeople <= 3 ? "md:grid-cols-1" : "md:grid-cols-2"
+                            )}>
+                                <div className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: (!activeSpeaker || activeSpeaker === 'me') ? -1 : 999 }}>
+                                    <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} activeSpeaker={activeSpeaker === 'me'} small />
                                 </div>
-                            ))}
+
+                                {remoteUsers.map(u => (
+                                    <div key={u.id} className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: activeSpeaker === u.id ? -1 : 1 }}>
+                                        <UserTile user={u} isDark={D} peerState={peerStates[u.id]} activeSpeaker={activeSpeaker === u.id} isHost={isHost} onForceMute={() => forceMutePeer(u.id)} onForceUnmute={() => forceUnmutePeer(u.id)} small />
+                                    </div>
+                                ))}
+                            </div>
                         </div>
                     </div>
                 ) : (

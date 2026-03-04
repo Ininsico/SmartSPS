@@ -5,9 +5,12 @@ import { reactionByKey } from './Constants';
 
 const FloatingReaction = ({ reactionKey, name, onDone }) => {
     useEffect(() => {
-        const t = setTimeout(onDone, 3200);
+        const t = setTimeout(() => {
+            onDone();
+        }, 3200);
         return () => clearTimeout(t);
-    }, [onDone]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const r = reactionByKey[reactionKey];
     if (!r) return null;
