@@ -21,6 +21,8 @@ const MeetingFooter = ({
     panel,
     setPanel,
     messages,
+    unread,
+    setUnread,
     handleLeave,
     isDark
 }) => {
@@ -99,15 +101,17 @@ const MeetingFooter = ({
                 </button>
 
                 <button
-                    onClick={() => setPanel(panel === 'chat' ? null : 'chat')}
+                    onClick={() => { setPanel(panel === 'chat' ? null : 'chat'); setUnread(0); }}
                     className={cn(
                         "w-11 h-11 rounded-xl border-none transition-all active:scale-90 flex items-center justify-center cursor-pointer relative",
                         panel === 'chat' ? "bg-premium-accent text-white" : (D ? "bg-white/5 hover:bg-white/10 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900")
                     )}
                 >
                     <MessageSquare size={20} />
-                    {messages.length > 0 && panel !== 'chat' && (
-                        <span className="absolute top-2 right-2 w-2 h-2 bg-black rounded-full border-2 border-premium-surface" />
+                    {unread > 0 && panel !== 'chat' && (
+                        <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-black rounded-full flex items-center justify-center px-1 border-2 border-premium-surface shadow">
+                            {unread > 9 ? '9+' : unread}
+                        </span>
                     )}
                 </button>
 

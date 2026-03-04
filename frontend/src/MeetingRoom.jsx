@@ -32,7 +32,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const [messages, setMessages] = useState([]);
     const [reactions, setReactions] = useState([]);
     const [panel, setPanel] = useState(null);
+    const panelRef = useRef(null);
     const [unread, setUnread] = useState(0);
+    const rtmQueue = useRef([]);  // messages buffered before RTM is ready
     const [handRaised, setHandRaised] = useState(false);
     const [isSharing, setIsSharing] = useState(false);
     const [activeSpeaker, setActiveSpeaker] = useState(null);
@@ -78,13 +80,31 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
     const upsertUser = (id, part) => {
         setRemoteUsers(prev => {
-            const idx = prev.findIndex(u => u.id === id);
+            // String-safe comparison — Agora RTC gives Numbers, RTM publisher gives strings
+            const idx = prev.findIndex(u => String(u.id) === String(id));
             if (idx > -1) {
                 const updated = [...prev];
                 updated[idx] = { ...updated[idx], ...part };
                 return updated;
             }
             return [...prev, { id, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...part }];
+        });
+    };
+
+    // Merge profile into user matched by numericUid, cleaning up any ghost entries created before RTC
+    const mergeProfile = (uid, profile) => {
+        setRemoteUsers(prev => {
+            const numId = Number(uid);
+            const strId = String(uid);
+            // Find by numeric OR string match
+            const idx = prev.findIndex(u => u.id === numId || u.id === strId || String(u.id) === strId);
+            if (idx > -1) {
+                const updated = [...prev];
+                updated[idx] = { ...updated[idx], ...profile };
+                return updated;
+            }
+            // No existing entry yet — create placeholder; RTC track will merge in later
+            return [...prev, { id: numId || strId, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...profile }];
         });
     };
 
@@ -218,6 +238,11 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     upsertUser(u.uid, { [type === 'video' ? 'videoTrack' : 'audioTrack']: u[type === 'video' ? 'videoTrack' : 'audioTrack'] });
                     if (type === 'audio') {
                         u.audioTrack.play();
+                        // Ask all peers to re-broadcast their profile so we always get name+avatar
+                        // even if their RTM profile arrived before this RTC track came in
+                        if (rtmReady.current && rtm.current) {
+                            rtm.current.publish(roomId, JSON.stringify({ type: 'request_profile' })).catch(() => { });
+                        }
                         // If recording is active, wire this remote audio into the mix
                         if (audioContext.current && recDestination.current && u.audioTrack) {
                             try {
@@ -262,10 +287,17 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         const rawMsg = ev.message;
                         const msgStr = typeof rawMsg === 'string' ? rawMsg : new TextDecoder().decode(rawMsg);
                         const data = JSON.parse(msgStr);
-                        if (data.type === 'profile') upsertUser(data.uid || ev.publisher, { userName: data.name, userAvatar: data.pic });
+                        if (data.type === 'profile') {
+                            mergeProfile(data.uid || ev.publisher, { userName: data.name, userAvatar: data.pic });
+                        }
+                        else if (data.type === 'request_profile') {
+                            // Someone just had an RTC peer join — re-broadcast our profile so they can see us
+                            broadcastProfile();
+                        }
                         else if (data.type === 'chat') {
                             setMessages(p => [...p, { id: Date.now(), from: ev.publisher, userName: data.name, text: data.text, userAvatar: data.pic }]);
-                            if (panel !== 'chat') setUnread(v => v + 1);
+                            // Use panelRef to avoid stale closure — panel state captured at listener-creation time would always be null
+                            if (panelRef.current !== 'chat') setUnread(v => v + 1);
                         } else if (data.type === 'react') setReactions(p => [...p, { id: Date.now(), key: data.key, name: data.name }]);
                         else if (data.type === 'state') setPeerStates(p => ({ ...p, [data.uid || ev.publisher]: data.state }));
                         else if (data.type === 'force_mute' && String(data.target) === String(numericUid)) {
@@ -337,13 +369,31 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         };
     }, [roomId]);
 
+    // Sync panelRef whenever panel state changes so the RTM listener always sees current value
+    useEffect(() => { panelRef.current = panel; }, [panel]);
+
     // --- Communication ---
     const rtmPublish = (payload) => {
-        if (!rtm.current || !rtmReady.current) return;
+        if (!rtm.current) return;
+        if (!rtmReady.current) {
+            // RTM not ready yet — queue and retry shortly
+            rtmQueue.current.push(payload);
+            return;
+        }
         rtm.current.publish(roomId, JSON.stringify(payload)).catch((e) => {
             console.error('[RTM] Publish Error:', e, payload);
         });
     };
+
+    // Flush the queue once RTM comes online
+    useEffect(() => {
+        if (rtmReady.current && rtmQueue.current.length > 0) {
+            const pending = [...rtmQueue.current];
+            rtmQueue.current = [];
+            pending.forEach(p => rtmPublish(p));
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [rtmReady.current]);
 
     const syncState = (state) => {
         const fullState = { ...state, adminMuted };
@@ -702,6 +752,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 setShowReacts={setShowReacts}
                 panel={panel} setPanel={setPanel}
                 messages={messages}
+                unread={unread} setUnread={setUnread}
                 handleLeave={handleLeave}
                 isDark={D}
             />

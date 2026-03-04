@@ -65,7 +65,8 @@ const UserTile = ({
                 <RemoteVideoPlayer videoTrack={user.videoTrack} audioTrack={user.audioTrack} />
             ) : null}
 
-            {(!user.videoTrack || (isYou && !user.videoOn)) && (
+            {/* Show avatar overlay only when there is truly no video to display */}
+            {(isYou ? !user.videoOn : !user.videoTrack) && (
                 <div className={cn(
                     "absolute inset-0 z-[1] flex items-center justify-center transition-colors duration-500",
                     isDark ? "bg-[#140c0c]" : "bg-gray-200"
@@ -103,7 +104,7 @@ const UserTile = ({
                 small ? "bottom-2 left-2 px-2 py-1 text-[10px]" : "bottom-3 left-3 px-3 py-1.5 text-xs"
             )}>
                 {user.userAvatar && <img src={user.userAvatar} alt="" className="w-3.5 h-3.5 rounded-full object-cover" />}
-                <span className="truncate max-w-[100px]">{user.userName || (isYou ? 'You' : 'Loading...')}</span>
+                <span className="truncate max-w-[100px]">{user.userName || (isYou ? 'You' : initials !== '?' ? initials : '···')}</span>
                 {(isMuted || isRemoteAdminMuted) && <MicOff size={11} className={isRemoteAdminMuted ? "text-white" : "text-white/60"} />}
                 {isRemoteAdminMuted && <span className="text-[9px] text-white font-extrabold tracking-widest">LOCKED</span>}
             </div>
