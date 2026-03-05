@@ -69,7 +69,8 @@ export const scheduleMeeting = async (req, res) => {
 
 export const joinMeeting = async (req, res) => {
     try {
-        const { roomId, userName: bodyName, userAvatar: bodyAvatar, agoraUid } = req.body;
+        const { roomId: rawRoomId, userName: bodyName, userAvatar: bodyAvatar, agoraUid } = req.body;
+        const roomId = rawRoomId?.trim();
         const userId = req.auth.userId;
         const userName = bodyName || req.headers['x-user-name'] || 'User';
         const userAvatar = bodyAvatar || req.headers['x-user-avatar'] || '';
@@ -81,7 +82,7 @@ export const joinMeeting = async (req, res) => {
         res.json(result);
     } catch (err) {
         console.error('Join meeting failed:', err.message);
-        res.status(500).json({ error: 'Failed to join meeting' });
+        res.status(400).json({ error: err.message });
     }
 };
 
@@ -91,7 +92,12 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
 
     if (cached) {
         recordHit();
-        const needsActivate = cached.status === 'ended' || cached.status === 'scheduled';
+        // If meeting is already ended, block joining
+        if (cached.status === 'ended') {
+            throw new Error('Meeting has already ended');
+        }
+
+        const needsActivate = cached.status === 'scheduled';
         const isHost = cached.hostId === userId;
 
         // Check if the original host is currenty active in the room
@@ -116,7 +122,8 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
                     status: needsActivate ? 'active' : cached.status,
                     hostId: newHostId,
                     hostSocketId: newHostSocketId,
-                    endTime: needsActivate ? null : undefined
+                    startTime: (needsActivate || !cached.startTime) ? new Date() : cached.startTime,
+                    endTime: null
                 }
             },
             { new: true }
@@ -141,8 +148,18 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
             patchCachedRoom(roomId, {
                 status: meeting.status,
                 hostId: newHostId,
-                hostSocketId: newHostSocketId
+                hostSocketId: newHostSocketId,
+                startTime: meeting.startTime,
+                endTime: meeting.endTime
             });
+
+            // Broadcast join event
+            pusher.trigger(`room-${roomId}`, 'user-joined', {
+                userId,
+                userName,
+                userAvatar,
+                agoraUid
+            }).catch(() => { });
         }
     } else {
         recordMiss();
@@ -157,12 +174,19 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
                 title: `Meeting ${roomId.toUpperCase()}`,
                 status: 'active',
                 participants: [{ userId, socketId, name: userName, avatar: userAvatar, isActive: true, agoraUid }],
+                startTime: new Date()
             });
         } else {
-            const needsActivate = meeting.status === 'ended' || meeting.status === 'scheduled';
+            // Block joining if meeting is ended
+            if (meeting.status === 'ended') {
+                throw new Error('Meeting has already ended');
+            }
+
+            const needsActivate = meeting.status === 'scheduled';
             if (needsActivate) {
                 meeting.status = 'active';
-                meeting.endTime = undefined;
+                meeting.endTime = null;
+                meeting.startTime = new Date();
                 const hasActiveHost = meeting.participants.some(p => p.userId === meeting.hostId && p.isActive);
                 if (!hasActiveHost) { meeting.hostId = userId; meeting.hostSocketId = socketId; }
             }
@@ -171,7 +195,7 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
             if (existing) {
                 existing.socketId = socketId;
                 existing.isActive = true;
-                existing.leftAt = undefined;
+                existing.leftAt = null;
                 existing.name = userName;
                 existing.avatar = userAvatar;
                 existing.agoraUid = agoraUid;
@@ -192,10 +216,33 @@ export const createOrJoinMeeting = async ({ roomId, userId, userName, userAvatar
 export const participantLeft = async ({ roomId, userId, socketId }) => {
     patchCachedParticipant(roomId, userId, { isActive: false, socketId: null });
     const query = socketId ? { roomId, 'participants.socketId': socketId } : { roomId, 'participants.userId': userId };
-    Meeting.updateOne(
+
+    // Mark participant as inactive in DB
+    const updated = await Meeting.findOneAndUpdate(
         query,
-        { $set: { 'participants.$.isActive': false, 'participants.$.leftAt': new Date() } }
+        { $set: { 'participants.$.isActive': false, 'participants.$.leftAt': new Date() } },
+        { new: true }
     ).catch(() => { });
+
+    if (updated) {
+        const p = updated.participants.find(x => String(x.userId) === String(userId));
+        if (p) {
+            pusher.trigger(`room-${roomId}`, 'user-left', {
+                userId,
+                userName: p.name
+            }).catch(() => { });
+        }
+    }
+
+    // Check if anyone else is still active in the room
+    const m = await Meeting.findOne({ roomId }).lean();
+    if (m && m.status === 'active') {
+        const stillIn = m.participants.some(p => p.isActive);
+        if (!stillIn) {
+            console.log(`[EXIT] Last user left room ${roomId}. Ending meeting.`);
+            await endMeeting(roomId);
+        }
+    }
 };
 
 export const reassignHost = async ({ roomId, newHostSocketId, newHostUserId }) => {
@@ -220,20 +267,43 @@ export const leaveMeeting = async (req, res) => {
 export const finishMeeting = async (req, res) => {
     try {
         const { roomId } = req.params;
+        const userId = req.auth.userId;
+
+        const meeting = await Meeting.findOne({ roomId });
+        if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+        const isParticipant = meeting.participants.some(p => p.userId === userId && p.isActive);
+        if (meeting.hostId !== userId && !isParticipant) {
+            return res.status(403).json({ error: 'Unauthorized to end this meeting' });
+        }
+
         await endMeeting(roomId);
         res.json({ success: true });
     } catch (err) {
+        console.error('[END ERROR]', err);
         res.status(500).json({ error: 'Failed to end meeting' });
     }
 };
 
 export const endMeeting = async (roomId) => {
-    evictRoom(roomId);
-    invalidateAllHistory();
+    console.log(`[STATUS] Terminating room ${roomId}...`);
+    // 1. Update DB first
     await Meeting.findOneAndUpdate(
         { roomId },
         { $set: { status: 'ended', endTime: new Date() } }
     ).catch(() => { });
+
+    // 2. Broadcast via Pusher before evicting
+    pusher.trigger(`room-${roomId}`, 'meeting-ended', { roomId }).catch(err => {
+        console.error('[PUSHER] End meeting trigger error:', err);
+    });
+
+    // 3. Kill room cache
+    evictRoom(roomId);
+
+    // 4. Clear ALL history cache to be safe
+    invalidateAllHistory();
+    console.log(`[STATUS] Room ${roomId} terminated successfully.`);
 };
 
 export const saveChatMessage = async (req, res) => {
@@ -259,14 +329,47 @@ export const saveChatMessage = async (req, res) => {
     }
 };
 
-export const getHostSocketId = async (roomId) => {
-    const cached = getCachedRoom(roomId);
-    if (cached) { recordHit(); return cached.hostSocketId ?? null; }
+export const savePersonalNotes = async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const { content } = req.body;
+        const userId = req.auth.userId;
+        const userName = req.headers['x-user-name'] || 'User';
+        const userAvatar = req.headers['x-user-avatar'] || '';
 
-    recordMiss();
-    const m = await Meeting.findOne({ roomId }, 'hostSocketId hostId participants').lean();
-    if (m) setCachedRoom(m);
-    return m?.hostSocketId ?? null;
+        const meeting = await Meeting.findOne({ roomId });
+        if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+        const noteIdx = meeting.personalNotes.findIndex(n => n.userId === userId);
+        if (noteIdx >= 0) {
+            meeting.personalNotes[noteIdx].content = content;
+            meeting.personalNotes[noteIdx].userName = userName;
+            meeting.personalNotes[noteIdx].userAvatar = userAvatar;
+        } else {
+            meeting.personalNotes.push({ userId, userName, userAvatar, content });
+        }
+
+        await meeting.save();
+        res.json({ success: true, notes: content });
+    } catch (err) {
+        console.error('[NOTES ERROR]', err);
+        res.status(500).json({ error: 'Failed to save notes' });
+    }
+};
+
+export const getPersonalNotes = async (req, res) => {
+    try {
+        const { roomId } = req.params;
+        const userId = req.auth.userId;
+
+        const meeting = await Meeting.findOne({ roomId }).select('personalNotes').lean();
+        if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+
+        const note = meeting.personalNotes?.find(n => n.userId === userId);
+        res.json({ content: note?.content || '' });
+    } catch (err) {
+        res.status(500).json({ error: 'Failed to fetch notes' });
+    }
 };
 
 export { Meeting };

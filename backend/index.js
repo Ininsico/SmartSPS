@@ -6,6 +6,7 @@ import mongoose from 'mongoose';
 import meetingRoutes from './routes/meetingRoutes.js';
 import recordingRoutes from './routes/recordingRoutes.js';
 import vexaRoutes from './routes/vexaRoutes.js';
+import authRoutes from './routes/authRoutes.js';
 import { getCacheStats } from './cache.js';
 
 const app = express();
@@ -14,33 +15,28 @@ app.use(cors({
     origin: (origin, callback) => callback(null, true),
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Clerk-Auth-Token', 'x-session-id']
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-session-id', 'x-user-name', 'x-user-avatar']
 }));
 
 app.use(express.json({ limit: '50mb' }));
 
-let mongoPromise = null;
-
-const connectDB = () => {
-    if (mongoose.connection.readyState === 1) return Promise.resolve();
-    if (mongoPromise) return mongoPromise;
-    mongoPromise = mongoose.connect(process.env.MONGODB_URI)
-        .then(() => { mongoPromise = null; })
-        .catch(err => { mongoPromise = null; throw err; });
-    return mongoPromise;
-};
-
-// Await DB before every route
-app.use(async (req, res, next) => {
+// MongoDB Connection
+const connectDB = async () => {
     try {
-        await connectDB();
-        next();
+        if (mongoose.connection.readyState === 1) return;
+        console.log('⏳ Connecting to MongoDB...');
+        await mongoose.connect(process.env.MONGODB_URI, {
+            family: 4, // Force IPv4 to fix slow DNS resolution (Common Node.js/Windows issue)
+            serverSelectionTimeoutMS: 5000
+        });
+        console.log('✅ Connected to MongoDB');
     } catch (err) {
-        console.error('MongoDB connection failed:', err.message);
-        res.status(503).json({ error: 'Database unavailable' });
+        console.error('❌ MongoDB Connection Error:', err.message);
     }
-});
+};
+connectDB();
 
+app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
 app.use('/api/recordings', recordingRoutes);
 app.use('/api/vexa', vexaRoutes);
@@ -58,7 +54,6 @@ app.get('/cache-stats', (req, res) => res.json(getCacheStats()));
 app.get('/debug', (req, res) => res.json({
     env: {
         MONGODB_URI: !!process.env.MONGODB_URI,
-        CLERK_SECRET_KEY: !!process.env.CLERK_SECRET_KEY,
         VEXA_API_KEY: !!process.env.VEXA_API_KEY,
         GROQ_API_KEY: !!process.env.GROQ_API_KEY,
         FRONTEND_URL: process.env.FRONTEND_URL || 'NOT SET',

@@ -2,7 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '../../utils';
 
-const SelectionModal = ({ options, onSelect, onClose, isDark }) => (
+const SelectionModal = ({ options, onSelect, onClose }) => (
     <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
@@ -14,10 +14,7 @@ const SelectionModal = ({ options, onSelect, onClose, isDark }) => (
             initial={{ scale: 0.9, y: 20 }}
             animate={{ scale: 1, y: 0 }}
             onClick={e => e.stopPropagation()}
-            className={cn(
-                "p-8 rounded-[32px] grid grid-cols-4 gap-4 shadow-2xl border transition-all",
-                isDark ? "bg-[#1a1010] border-white/10" : "bg-white border-black/5"
-            )}
+            className="p-8 rounded-[32px] grid grid-cols-4 gap-4 shadow-2xl border transition-all bg-white border-black/5"
         >
             {options.map(o => {
                 const Icon = o.icon;

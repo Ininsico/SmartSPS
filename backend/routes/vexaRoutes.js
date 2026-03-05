@@ -1,14 +1,15 @@
 import express from 'express';
-import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
-import { startBot, stopBot, getTranscript, getSavedTranscript, summarize, getStatus } from '../controllers/vexaController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
+import { startBot, stopBot, getTranscript, getSavedTranscript, summarize, getStatus, updateTranscript } from '../controllers/vexaController.js';
 
 const router = express.Router();
 
-router.post('/start', ClerkExpressWithAuth(), startBot);
-router.delete('/stop/:meetingId', ClerkExpressWithAuth(), stopBot);
-router.get('/transcript/:meetingId', ClerkExpressWithAuth(), getTranscript);
-router.get('/status/:meetingId', ClerkExpressWithAuth(), getStatus);
-router.get('/saved/:meetingId', ClerkExpressWithAuth(), getSavedTranscript);
-router.post('/summarize', ClerkExpressWithAuth(), summarize);
+router.post('/start', authMiddleware, startBot);
+router.delete('/stop/:meetingId', authMiddleware, stopBot);
+router.get('/transcript/:meetingId', authMiddleware, getTranscript);
+router.get('/status/:meetingId', authMiddleware, getStatus);
+router.get('/saved/:meetingId', authMiddleware, getSavedTranscript);
+router.post('/summarize', authMiddleware, summarize);
+router.put('/update/:meetingId', authMiddleware, updateTranscript);
 
 export default router;

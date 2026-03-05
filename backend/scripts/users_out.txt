@@ -1,0 +1,10 @@
+[
+  {
+    "_id": "69a9a3c3620ed7471f4ee2ed",
+    "email": "ininsico@gmail.com",
+    "name": "ArslanRathore",
+    "createdAt": "2026-03-05T15:39:47.148Z",
+    "__v": 0,
+    "avatar": "https://res.cloudinary.com/dos6h3v5l/image/upload/v1772740275/smartsps/avatars/n8xdqd331ok4ctxrn0sn.png"
+  }
+]

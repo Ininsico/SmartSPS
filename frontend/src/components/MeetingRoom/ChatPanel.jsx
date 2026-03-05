@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageSquare, X, Send } from 'lucide-react';
 import { cn } from '../../utils';
-import { useUser } from '@clerk/clerk-react';
+import { useAuthContext } from '../../AuthContext';
 
-const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
-    const { user } = useUser();
+const ChatPanel = ({ messages, onSend, onClose }) => {
+    const { user } = useAuthContext();
     const [t, setT] = useState('');
     const scrollRef = useRef();
 
@@ -13,15 +13,15 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
     }, [messages]);
 
     return (
-        <div className="h-full flex flex-col">
-            <div className="p-6 border-b border-white/5 flex items-center justify-between shrink-0">
+        <div className="h-full flex flex-col bg-white">
+            <div className="p-6 border-b border-gray-100 flex items-center justify-between shrink-0">
                 <h3 className="m-0 text-base font-black tracking-tight flex items-center gap-2">
                     <MessageSquare size={16} className="text-black" />
                     MEETING CHAT
                 </h3>
                 <button
                     onClick={onClose}
-                    className="p-2 rounded-lg hover:bg-white/5 transition-colors border-none cursor-pointer text-gray-400 hover:text-white"
+                    className="p-2 rounded-lg hover:bg-gray-100 transition-colors border-none cursor-pointer text-gray-400 hover:text-black"
                 >
                     <X size={18} />
                 </button>
@@ -49,7 +49,7 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
                                 "px-4 py-2.5 rounded-2xl text-sm shadow-sm max-w-[85%] break-words leading-relaxed transition-all",
                                 isMe
                                     ? "bg-black text-white rounded-tr-none"
-                                    : (isDark ? "bg-white/5 text-white border border-white/5 rounded-tl-none" : "bg-gray-100 text-gray-900 border border-gray-200 rounded-tl-none")
+                                    : "bg-gray-100 text-gray-900 border border-gray-200 rounded-tl-none"
                             )}>
                                 {m.text}
                             </div>
@@ -58,7 +58,7 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
                 })}
             </div>
 
-            <div className="p-4 bg-black/20 backdrop-blur-xl border-t border-white/5 shrink-0">
+            <div className="p-4 bg-gray-50 border-t border-gray-100 shrink-0">
                 <form
                     onSubmit={e => { e.preventDefault(); if (t.trim()) { onSend(t); setT(''); } }}
                     className="flex gap-2"
@@ -67,10 +67,7 @@ const ChatPanel = ({ messages, onSend, onClose, isDark }) => {
                         autoFocus
                         value={t}
                         onChange={e => setT(e.target.value)}
-                        className={cn(
-                            "flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all outline-none border-none",
-                            isDark ? "bg-white/5 text-white focus:bg-white/10 placeholder:text-white/20" : "bg-gray-50 text-gray-900 focus:bg-white border border-gray-200 placeholder:text-gray-400"
-                        )}
+                        className="flex-1 px-4 py-3 rounded-xl text-sm font-medium transition-all outline-none bg-white border border-gray-200 text-gray-900 focus:bg-white placeholder:text-gray-400"
                         placeholder="Message everyone..."
                     />
                     <button

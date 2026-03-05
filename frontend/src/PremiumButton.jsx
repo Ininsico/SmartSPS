@@ -20,7 +20,7 @@ const PremiumButton = ({ children, onClick, className = '', variant = 'primary',
       )}
     >
       <div className="relative z-10 flex items-center justify-center gap-3 w-full">
-        {Icon && <Icon size={18} className="flex-shrink-0" strokeWidth={2.5} />}
+        {Icon && <Icon size={18} className={cn("flex-shrink-0", isPrimary || isSecondary ? "text-black" : "text-white")} strokeWidth={2.5} />}
         {children && <span className="whitespace-nowrap pt-[1px]">{children}</span>}
       </div>
 

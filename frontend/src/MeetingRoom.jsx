@@ -1,8 +1,14 @@
 import React, { useEffect, useRef, useState } from 'react';
 import AgoraRTC from 'agora-rtc-sdk-ng';
 import Pusher from 'pusher-js';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+// Silence Third-party SDK logs
+AgoraRTC.setLogLevel(4); // 4 = NONE in some versions, but to be sure we often use the explicit method if available
+Pusher.logToConsole = false;
 import { motion, AnimatePresence } from 'framer-motion';
-import { useUser, useAuth } from '@clerk/clerk-react';
+import { useAuthContext } from './AuthContext';
 import { cn } from './utils';
 
 // Modular Components
@@ -15,14 +21,15 @@ import MeetingFooter from './components/MeetingRoom/MeetingFooter';
 import MeetingHeader from './components/MeetingRoom/MeetingHeader';
 import BotHUD from './components/MeetingRoom/BotHUD';
 import SummarySidebar from './components/MeetingRoom/SummarySidebar';
+import NotesPanel from './components/MeetingRoom/NotesPanel';
+import ParticipantsPanel from './components/MeetingRoom/ParticipantsPanel';
 import { REACTIONS } from './components/MeetingRoom/Constants';
-import { ScreenShare } from 'lucide-react';
+import { ScreenShare, Users, LogIn, LogOut, Info, AlertCircle, X, PhoneOff, Loader2 } from 'lucide-react';
 
 const APP_ID = import.meta.env.VITE_AGORA_APP_ID;
 
-const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = false, isDarkMode, setIsDarkMode }) => {
-    const { user } = useUser();
-    const { getToken } = useAuth();
+const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = false }) => {
+    const { user, getToken } = useAuthContext();
 
     // UI State
     const [micOn, setMicOn] = useState(initialConfig?.micOn ?? true);
@@ -37,12 +44,62 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const [handRaised, setHandRaised] = useState(false);
     const [isSharing, setIsSharing] = useState(false);
     const [activeSpeaker, setActiveSpeaker] = useState(null);
+    const [endMessage, setEndMessage] = useState(null);
     const [adminMuted, setAdminMuted] = useState(false);
     const [showInvite, setShowInvite] = useState(false);
     const [showReacts, setShowReacts] = useState(false);
+    const [showParticipants, setShowParticipants] = useState(false);
+    const [notifications, setNotifications] = useState([]);
     const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+    const [personalNotes, setPersonalNotes] = useState('');
+    const [isSavingNotes, setIsSavingNotes] = useState(false);
+    const [showEndConfirm, setShowEndConfirm] = useState(false);
 
-    // Recording & AI State
+    // Save Notes Debounce
+    const notesTimeout = useRef(null);
+
+    // --- State Ref to fix stale closures in callbacks ---
+    const stateRef = useRef({ micOn, handRaised, adminMuted, isSharing });
+    useEffect(() => {
+        stateRef.current = { micOn, handRaised, adminMuted, isSharing };
+    }, [micOn, handRaised, adminMuted, isSharing]);
+    useEffect(() => {
+        if (panel === 'notes') {
+            if (notesTimeout.current) clearTimeout(notesTimeout.current);
+            notesTimeout.current = setTimeout(async () => {
+                setIsSavingNotes(true);
+                const token = await getToken();
+                fetch(`${import.meta.env.VITE_API_URL}/meetings/notes/${roomId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        Authorization: `Bearer ${token}`,
+                        'x-user-name': user?.name || 'User',
+                        'x-user-avatar': user?.avatar || ''
+                    },
+                    body: JSON.stringify({ content: personalNotes })
+                }).finally(() => setIsSavingNotes(false));
+            }, 1000);
+        }
+        return () => { if (notesTimeout.current) clearTimeout(notesTimeout.current); };
+    }, [personalNotes, roomId]);
+
+    // Fetch notes on load
+    useEffect(() => {
+        const fetchNotes = async () => {
+            const token = await getToken();
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/meetings/notes/${roomId}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setPersonalNotes(data.content || '');
+            }
+        };
+        fetchNotes();
+    }, [roomId]);
+
+    // Recording & AI State — Audio-only (for AI pipeline)
     const [isRecording, setIsRecording] = useState(false);
     const [recSeconds, setRecSeconds] = useState(0);
     const [uploading, setUploading] = useState(false);
@@ -54,9 +111,22 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const [countdown, setCountdown] = useState(0);
     const [summary, setSummary] = useState(null);
 
+    // Screen+Audio Recording State — for Dashboard recordings section
+    const [isScreenRecording, setIsScreenRecording] = useState(false);
+    const [screenRecSeconds, setScreenRecSeconds] = useState(0);
+
+    const addNotification = ({ type, title, message }) => {
+        const id = Date.now();
+        setNotifications(prev => [...prev, { id, type, title, message }]);
+        setTimeout(() => {
+            setNotifications(prev => prev.filter(n => n.id !== id));
+        }, 5000);
+    };
+    const [screenUploading, setScreenUploading] = useState(false);
+
     const [isHost, setIsHost] = useState(initialIsHost || sessionStorage.getItem(`host_${roomId}`) === 'true');
 
-    // Refs
+    // Refs — Audio-only AI recording
     const rtc = useRef(null);
     const localTracks = useRef({ audio: null, video: null });
     const screenTrack = useRef(null);
@@ -65,13 +135,18 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const recChunks = useRef([]);
     const recTimer = useRef(null);
     const countdownRef = useRef(null);
-    const audioContext = useRef(null);       // Web Audio context for recording mix
-    const recDestination = useRef(null);    // MediaStreamDestinationNode
-    const connectedNodes = useRef({});      // uid -> source node (to disconnect later)
+    const audioContext = useRef(null);
+    const recDestination = useRef(null);
+    const connectedNodes = useRef({});
+    // Refs — Screen+Audio dashboard recording
+    const screenMediaRecorder = useRef(null);
+    const screenRecChunks = useRef([]);
+    const screenRecTimer = useRef(null);
+    const screenRecSeconds_ref = useRef(0);
     const sessionID = useRef(`${user?.id || 'guest'}_${Math.floor(Math.random() * 100000)}`).current;
     const numericUid = useRef(Math.floor(Math.random() * 1000000)).current;
 
-    const D = isDarkMode;
+
 
     // --- Helpers ---
     const fmtTime = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
@@ -82,15 +157,26 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         if (strId === String(user?.id) || (!isNaN(numId) && numId === numericUid)) return;
 
         setRemoteUsers(prev => {
-            // Priority 1: Match by the passed ID (could be clerk or agora)
-            // Priority 2: Match by internal agoraUid
-            const idx = prev.findIndex(u => String(u.id) === strId || (u.agoraUid && u.agoraUid === numId));
+            const idx = prev.findIndex(u =>
+                String(u.id) === strId ||
+                (u.agoraUid && Number(u.agoraUid) === numId)
+            );
+
             if (idx > -1) {
                 const updated = [...prev];
                 updated[idx] = { ...updated[idx], ...part };
                 return updated;
             }
-            return [...prev, { id: strId, agoraUid: !isNaN(numId) ? numId : null, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...part }];
+            // Add new with default fallback ID if not yet established
+            return [...prev, {
+                id: strId,
+                agoraUid: !isNaN(numId) ? numId : null,
+                userName: '',
+                userAvatar: '/defaultpic.png',
+                videoTrack: null,
+                audioTrack: null,
+                ...part
+            }];
         });
     };
 
@@ -100,13 +186,16 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         if (numId === numericUid || strId === String(user?.id)) return;
 
         setRemoteUsers(prev => {
-            const idx = prev.findIndex(u => u.agoraUid === numId || String(u.id) === strId);
+            const idx = prev.findIndex(u =>
+                Number(u.agoraUid) === numId || String(u.id) === strId
+            );
             if (idx > -1) {
                 const updated = [...prev];
                 updated[idx] = { ...updated[idx], ...profile };
                 return updated;
             }
-            return [...prev, { id: strId, agoraUid: numId, userName: '', userAvatar: '', videoTrack: null, audioTrack: null, ...profile }];
+            // DO NOT create new entries — mergeProfile only updates existing users
+            return prev;
         });
     };
 
@@ -159,39 +248,44 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         setShowTranscript(true);
     };
 
-    const tryFetchTranscript = async (attempt = 1) => {
-        const maxAttempts = 15;
-        const waitTime = 10;
+    const tryFetchTranscript = async () => {
         setBotPhase('fetching');
-        try {
-            setPhaseMsg(`AI Transcribing... (Attempt ${attempt}/${maxAttempts})`);
-            const res = await botFetch(`/transcript/${roomId}`);
-            if (res.status === 200) {
-                const data = await res.json();
-                if (data.segments?.length > 0) {
-                    setTranscript(data);
-                    await runSummarize(data);
-                    return;
-                } else {
-                    setBotPhase('error');
-                    setPhaseMsg('Meeting too short or no audio detected.');
-                    setBotRunning(false);
-                    return;
+        const pollWait = 2000;
+
+        const poll = async () => {
+            try {
+                const msgs = [
+                    'Analyzing meeting dynamics...',
+                    'Extracting key outcomes...',
+                    'Identifying participant roles...',
+                    'Cataloging action items...',
+                    'Finalizing project documentation...'
+                ];
+                setPhaseMsg(msgs[Math.floor(Math.random() * msgs.length)]);
+
+                const res = await botFetch(`/transcript/${roomId}`);
+                if (res.status === 200) {
+                    const data = await res.json();
+                    if (data.segments?.length > 0) {
+                        setTranscript(data);
+                        if (data.summary?.overview) {
+                            setSummary(data.summary);
+                            setBotPhase('done');
+                            setPhaseMsg('AI Meeting Notes Compiled.');
+                            setShowTranscript(true);
+                            setTimeout(() => setBotPhase('idle'), 3000);
+                            return; // Stop polling
+                        }
+                        // Summary not ready yet, background task is running. 
+                        // Just keep polling every 2s to catch it.
+                    }
                 }
+                setTimeout(poll, pollWait);
+            } catch (err) {
+                setTimeout(poll, pollWait);
             }
-            if (res.status >= 400) {
-                throw new Error('Server error during transcription');
-            }
-            if (attempt < maxAttempts) {
-                startCountdown(waitTime, () => tryFetchTranscript(attempt + 1));
-            } else {
-                setBotPhase('error');
-                setPhaseMsg('Transcription taking longer than usual.');
-                setBotRunning(false);
-            }
-        } catch (err) {
-            if (attempt < maxAttempts) startCountdown(waitTime, () => tryFetchTranscript(attempt + 1));
-        }
+        };
+        poll();
     };
 
     const toggleBot = async () => {
@@ -214,7 +308,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             setBotRunning(true);
             setBotPhase('fetching');
             setPhaseMsg('Transcribing meeting…');
-            await tryFetchTranscript(5);
+            await tryFetchTranscript();
         } catch (err) {
             setBotPhase('error');
             setPhaseMsg('Failed to process recording.');
@@ -229,24 +323,30 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         fetch(`${import.meta.env.VITE_API_URL}/meetings/profile/${roomId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ uid: numericUid, name: user?.fullName || 'Guest', pic: user?.imageUrl })
+            body: JSON.stringify({ uid: numericUid, name: user?.name || 'Guest', pic: user?.avatar })
         }).catch(() => { });
     };
 
     const syncState = async (state) => {
-        const fullState = { ...state, adminMuted };
-        setPeerStates(p => ({ ...p, [numericUid]: fullState }));
+        const nextState = {
+            muted: !stateRef.current.micOn,
+            handRaised: stateRef.current.handRaised,
+            adminMuted: stateRef.current.adminMuted,
+            screenSharing: stateRef.current.isSharing,
+            ...state
+        };
+        setPeerStates(p => ({ ...p, [numericUid]: nextState }));
         const token = await getToken();
         fetch(`${import.meta.env.VITE_API_URL}/meetings/state/${roomId}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ uid: numericUid, state: fullState })
+            body: JSON.stringify({ uid: numericUid, state: nextState })
         }).catch(() => { });
     };
 
     const sendMsg = async (txt) => {
         if (!txt?.trim()) return;
-        const msg = { senderName: user?.fullName || user?.firstName || 'Guest', senderAvatar: user?.imageUrl, text: txt };
+        const msg = { senderName: user?.name || 'Guest', senderAvatar: user?.avatar, text: txt };
         setMessages(p => [...p, { id: Date.now(), from: user?.id || 'me', userName: msg.senderName, text: txt, userAvatar: msg.senderAvatar }]);
         const token = await getToken();
         fetch(`${import.meta.env.VITE_API_URL}/meetings/chat/${roomId}`, {
@@ -268,9 +368,35 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     };
 
     // --- Control Handlers ---
-    const toggleMic = () => { if (adminMuted) return; setMicOn(prev => !prev); localTracks.current.audio?.setEnabled(!micOn); syncState({ muted: micOn, handRaised, adminMuted }); };
-    const toggleVideo = () => { setVideoOn(prev => !prev); localTracks.current.video?.setEnabled(!videoOn); };
-    const toggleHand = () => { setHandRaised(prev => !prev); syncState({ muted: !micOn, handRaised: !handRaised, adminMuted }); };
+    const toggleMic = async () => {
+        if (stateRef.current.adminMuted) return;
+        setMicOn(prev => {
+            const next = !prev;
+            if (localTracks.current.audio) {
+                localTracks.current.audio.setEnabled(next).catch(e => console.error(e));
+            }
+            syncState({ muted: !next, handRaised: stateRef.current.handRaised, adminMuted: false });
+            return next;
+        });
+    };
+
+    const toggleVideo = async () => {
+        setVideoOn(prev => {
+            const next = !prev;
+            if (localTracks.current.video) {
+                localTracks.current.video.setEnabled(next).catch(e => console.error(e));
+            }
+            return next;
+        });
+    };
+
+    const toggleHand = () => {
+        setHandRaised(prev => {
+            const next = !prev;
+            syncState({ muted: !stateRef.current.micOn, handRaised: next, adminMuted: stateRef.current.adminMuted });
+            return next;
+        });
+    };
 
     const forceMutePeer = async (targetUid) => {
         if (!isHost || !targetUid) {
@@ -296,10 +422,30 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     };
 
     const handleLeave = async () => {
-        if (isRecording) stopRecording();
+        if (isRecording) await stopRecording();
         if (botRunning) botFetch(`/stop/${roomId}`, { method: 'DELETE' }).catch(() => { });
         const token = await getToken();
         await fetch(`${import.meta.env.VITE_API_URL}/meetings/leave/${roomId}`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } }).catch(() => { });
+        onLeave();
+    };
+
+
+
+    const handleEndMeeting = async () => {
+        if (isRecording) {
+            setPhaseMsg('Saving final recording...');
+            await stopRecording();
+        }
+        try {
+            const token = await getToken();
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/meetings/end/${roomId}`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            if (!res.ok) console.warn('[MEETING] End request returned status:', res.status);
+        } catch (err) {
+            console.error('[MEETING] End request failed:', err);
+        }
         onLeave();
     };
 
@@ -389,8 +535,30 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                             if (shouldMute) {
                                 setMicOn(false);
                                 localTracks.current.audio?.setEnabled(false);
+                                syncState({ muted: true, handRaised: stateRef.current.handRaised, adminMuted: true });
+                                addNotification({ type: 'alert', title: 'Admin Muted You', message: 'You have been muted by a host.' });
+                            } else {
+                                syncState({ muted: !stateRef.current.micOn, handRaised: stateRef.current.handRaised, adminMuted: false });
                             }
                         }
+                    });
+
+                    channel.bind('meeting-ended', () => {
+                        if (!isMounted) return;
+                        setEndMessage("Host terminated the session.");
+                        setTimeout(() => handleLeave(), 2500);
+                    });
+
+                    channel.bind('user-joined', (data) => {
+                        if (!isMounted) return;
+                        if (String(data.userId) === String(user?.id)) return;
+                        addNotification({ type: 'join', title: 'Participant Joined', message: `${data.userName} entered the room.` });
+                    });
+
+                    channel.bind('user-left', (data) => {
+                        if (!isMounted) return;
+                        if (String(data.userId) === String(user?.id)) return;
+                        addNotification({ type: 'leave', title: 'Participant Left', message: `${data.userName} left the meeting.` });
                     });
                 } else {
                     console.log('[CHAT] Pusher keys missing, using polling fallback');
@@ -426,7 +594,11 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 });
 
                 rtc.current.on('user-left', (u) => {
-                    setRemoteUsers(prev => prev.filter(x => String(x.id) !== String(u.uid) && x.agoraUid !== Number(u.uid)));
+                    const leaveUid = Number(u.uid);
+                    setRemoteUsers(prev => prev.filter(x =>
+                        String(x.id) !== String(leaveUid) &&
+                        Number(x.agoraUid) !== leaveUid
+                    ));
                 });
 
                 rtc.current.on('volume-indicator', (volumes) => {
@@ -434,29 +606,25 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     if (highest.level > 10) setActiveSpeaker(highest.uid === numericUid ? 'me' : highest.uid);
                     else setActiveSpeaker(null);
                 });
-
-                // Start RTC Join
                 await rtc.current.join(APP_ID, roomId, null, numericUid);
                 const [audio, video] = await AgoraRTC.createMicrophoneAndCameraTracks();
 
-                // Ensure initial state is applied BEFORE publishing
-                await audio.setEnabled(micOn);
-                await video.setEnabled(videoOn);
-
                 localTracks.current = { audio, video };
                 await rtc.current.publish([audio, video]);
-
-                rtmReady.current = true;
-                broadcastProfile();
-                const t = setInterval(() => { if (isMounted) broadcastProfile(); }, 10000);
-
-                // Notify Join
                 const token = await getToken();
                 const res = await fetch(`${import.meta.env.VITE_API_URL}/meetings/join`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}`, 'x-session-id': sessionID },
-                    body: JSON.stringify({ roomId, userName: user?.fullName, userAvatar: user?.imageUrl, agoraUid: numericUid }),
+                    body: JSON.stringify({ roomId: roomId.trim(), userName: user?.name, userAvatar: user?.avatar, agoraUid: numericUid }),
                 });
+
+                if (!res.ok) {
+                    const errData = await res.json();
+                    alert(errData.error || 'Failed to join meeting');
+                    onLeave();
+                    return;
+                }
+
                 const joinData = await res.json();
                 if (joinData.isHost) {
                     setIsHost(true);
@@ -472,16 +640,36 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     setRemoteUsers(prev => {
                         const next = [...prev];
                         others.forEach(o => {
-                            const exists = next.findIndex(p => String(p.id) === String(o.userId) || (o.agoraUid && p.agoraUid === o.agoraUid));
+                            const dbUid = o.agoraUid ? Number(o.agoraUid) : null;
+                            const exists = next.findIndex(p =>
+                                String(p.id) === String(o.userId) ||
+                                (dbUid && Number(p.agoraUid) === dbUid)
+                            );
                             if (exists === -1) {
-                                next.push({ id: o.userId, agoraUid: o.agoraUid, userName: o.name, userAvatar: o.avatar, videoTrack: null, audioTrack: null });
+                                next.push({ id: o.userId, agoraUid: dbUid, userName: o.name, userAvatar: o.avatar, videoTrack: null, audioTrack: null });
                             } else {
-                                next[exists] = { ...next[exists], agoraUid: o.agoraUid, userName: o.name, userAvatar: o.avatar };
+                                next[exists] = { ...next[exists], id: o.userId, agoraUid: dbUid, userName: o.name, userAvatar: o.avatar };
                             }
                         });
-                        return next;
+                        // Deduplicate by Clerk ID
+                        const seen = new Set();
+                        return next.filter(u => {
+                            const key = u.id;
+                            if (seen.has(key)) return false;
+                            seen.add(key);
+                            return true;
+                        });
                     });
                 }
+
+                // Apply pre-join mic/camera state AFTER the DB write — do NOT await setEnabled,
+                // Agora's internal mutex may not be ready immediately after publish
+                try { if (!micOn) audio.setEnabled(false); } catch (_) { }
+                try { if (!videoOn) video.setEnabled(false); } catch (_) { }
+
+                rtmReady.current = true;
+                broadcastProfile();
+                const t = setInterval(() => { if (isMounted) broadcastProfile(); }, 10000);
 
                 return () => {
                     clearInterval(t);
@@ -536,34 +724,59 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         let changed = false;
                         const next = [...prev];
                         activeOthers.forEach(db => {
-                            // Match by Clerk ID OR Agora UID
-                            const idx = next.findIndex(n => String(n.id) === String(db.userId) || (db.agoraUid && n.agoraUid === db.agoraUid));
+                            const dbUid = db.agoraUid ? Number(db.agoraUid) : null;
+                            const dbClerkId = String(db.userId);
+
+                            const idx = next.findIndex(n =>
+                                String(n.id) === dbClerkId ||
+                                (dbUid && Number(n.agoraUid) === dbUid)
+                            );
 
                             if (idx === -1) {
-                                next.push({ id: db.userId, agoraUid: db.agoraUid, userName: db.name, userAvatar: db.avatar, videoTrack: null, audioTrack: null });
+                                next.push({
+                                    id: dbClerkId,
+                                    agoraUid: dbUid,
+                                    userName: db.name,
+                                    userAvatar: db.avatar,
+                                    videoTrack: null,
+                                    audioTrack: null
+                                });
                                 changed = true;
                             } else {
-                                // Merge DB data into existing entry and stabilize ID
-                                if (next[idx].id !== db.userId || next[idx].agoraUid !== db.agoraUid) {
-                                    next[idx] = { ...next[idx], id: db.userId, agoraUid: db.agoraUid, userName: db.name, userAvatar: db.avatar };
+                                // Update existing but favor Clerk ID as the primary key
+                                if (String(next[idx].id) !== dbClerkId ||
+                                    (dbUid && Number(next[idx].agoraUid) !== dbUid)) {
+                                    next[idx] = {
+                                        ...next[idx],
+                                        id: dbClerkId,
+                                        agoraUid: dbUid,
+                                        userName: db.name,
+                                        userAvatar: db.avatar
+                                    };
                                     changed = true;
                                 }
                             }
                         });
-                        // Also cleanup anyone no longer in activeOthers
-                        const filtered = next.filter(n => activeOthers.some(o => String(o.userId) === String(n.id) || (n.agoraUid && o.agoraUid === n.agoraUid)));
 
-                        // CRITICAL DEDUPLICATION: Ensure no two tiles share the same Clerk ID or Agora UID
-                        const seenIds = new Set();
+                        // Cleanup and strict deduplication
+                        const filtered = next.filter(n =>
+                            activeOthers.some(o =>
+                                String(o.userId) === String(n.id) ||
+                                (n.agoraUid && o.agoraUid && Number(o.agoraUid) === Number(n.agoraUid))
+                            )
+                        );
+
+                        const seen = new Set();
                         const final = [];
                         filtered.forEach(item => {
-                            if (!seenIds.has(String(item.id))) {
+                            const key = item.id || `agora-${item.agoraUid}`;
+                            if (!seen.has(key)) {
                                 final.push(item);
-                                seenIds.add(String(item.id));
+                                seen.add(key);
                             }
                         });
 
-                        if (final.length !== next.length) changed = true;
+                        if (final.length !== prev.length) return final;
                         return changed ? final : prev;
                     });
                 }
@@ -590,7 +803,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             setBotRunning(true);
             setBotPhase('fetching');
             setPhaseMsg('Transcribing meeting…');
-            await tryFetchTranscript(1);
+            await tryFetchTranscript();
         } catch (err) {
             setBotPhase('error');
             setPhaseMsg(`AI failed: ${err.message}`);
@@ -618,7 +831,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             const filename = `rec_${roomId}_${Date.now()}.${ext}`;
             const title = `Meeting ${roomId.toUpperCase()} — ${new Date().toLocaleDateString()}`;
 
-            console.log(`[REC] Sending to backend | Size: ${(blob.size / 1024 / 1024).toFixed(2)}MB | MIME: ${mimeType}`);
             const token = await getToken();
             const form = new FormData();
             form.append('file', blob, filename);
@@ -635,23 +847,51 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             const data = await res.json();
 
             if (!res.ok || !data.url) {
-                console.error('[REC] Backend upload failed:', data);
                 throw new Error(data.error || 'Upload failed');
             }
-
-            console.log('[REC] Upload success:', data.url);
-
-            // Kick off AI pipeline with the returned URL
             await triggerAI(data.url);
 
         } catch (err) {
-            console.error('[REC] uploadRecording error:', err);
             setBotPhase('error');
             setPhaseMsg(`Upload failed: ${err.message}`);
             setTimeout(() => setBotPhase('idle'), 5000);
         } finally {
             setUploading(false);
             recChunks.current = [];
+        }
+    };
+
+    // Upload screen recording to dashboard (no AI)
+    const uploadScreenRecording = async (blob) => {
+        if (!blob || blob.size === 0) return;
+        setScreenUploading(true);
+        try {
+            const mimeType = blob.type || 'video/webm';
+            let ext = 'webm';
+            if (mimeType.includes('mp4')) ext = 'mp4';
+
+            const filename = `screen_${roomId}_${Date.now()}.${ext}`;
+            const title = `📹 ${roomId.toUpperCase()} Screen — ${new Date().toLocaleDateString()}`;
+
+            const token = await getToken();
+            const form = new FormData();
+            form.append('file', blob, filename);
+            form.append('roomId', roomId);
+            form.append('title', title);
+            form.append('duration', String(screenRecSeconds_ref.current));
+
+            const res = await fetch(`${import.meta.env.VITE_API_URL}/recordings/upload`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${token}` },
+                body: form,
+            });
+
+            if (!res.ok) throw new Error('Screen recording upload failed');
+        } catch (err) {
+            console.error('[SCREEN-REC] Upload error:', err.message);
+        } finally {
+            setScreenUploading(false);
+            screenRecChunks.current = [];
         }
     };
 
@@ -675,9 +915,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         const localSrc = ctx.createMediaStreamSource(new MediaStream([micMs]));
                         localSrc.connect(destination);
                         connectedNodes.current['__local'] = localSrc;
-                        console.log('[REC] Local mic wired into recording mix');
                     }
-                } catch (e) { console.warn('[REC] Could not wire local mic:', e); }
+                } catch (e) { }
             }
 
             // 2. Wire in ALL current remote audio tracks
@@ -690,9 +929,8 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                             const src = ctx.createMediaStreamSource(new MediaStream([ms]));
                             src.connect(destination);
                             connectedNodes.current[u.uid] = src;
-                            console.log(`[REC] Remote uid=${u.uid} wired into recording mix`);
                         }
-                    } catch (e) { console.warn('[REC] Could not wire remote track:', u.uid, e); }
+                    } catch (e) { }
                 }
             }
 
@@ -717,23 +955,13 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
 
             mediaRecorder.current = new MediaRecorder(audioOnlyStream, options);
             window.__recordedMimeType = mediaRecorder.current.mimeType;
-            console.log('[REC] Started | MIME:', mediaRecorder.current.mimeType);
 
             mediaRecorder.current.ondataavailable = (e) => {
                 if (e.data && e.data.size > 0) recChunks.current.push(e.data);
             };
 
             mediaRecorder.current.onstop = () => {
-                // Close audio context
-                if (audioContext.current) {
-                    audioContext.current.close().catch(() => { });
-                    audioContext.current = null;
-                    recDestination.current = null;
-                    connectedNodes.current = {};
-                }
-                const blob = new Blob(recChunks.current, { type: window.__recordedMimeType || 'audio/webm' });
-                console.log(`[REC] Stopped | Chunks: ${recChunks.current.length} | Size: ${(blob.size / 1024 / 1024).toFixed(2)}MB | Type: ${blob.type}`);
-                uploadRecording(blob);
+                // Handled in stopRecording wrapper now
             };
 
             mediaRecorder.current.start(1000);
@@ -746,115 +974,460 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         }
     };
 
+    // We'll use this ref to wait for uploads at checkout
+    const stopRecordingPromise = useRef(null);
+
     const stopRecording = () => {
-        clearInterval(recTimer.current);
-        setIsRecording(false);
-        if (mediaRecorder.current && mediaRecorder.current.state !== 'inactive') {
-            mediaRecorder.current.stop(); // triggers onstop -> uploadRecording
+        if (!isRecording) return Promise.resolve();
+
+        // Return existing promise if we're already stopping
+        if (stopRecordingPromise.current) return stopRecordingPromise.current;
+
+        stopRecordingPromise.current = new Promise((resolve) => {
+            clearInterval(recTimer.current);
+            setIsRecording(false);
+
+            if (mediaRecorder.current && mediaRecorder.current.state !== 'inactive') {
+                // The onstop handler will call uploadRecording which will eventually resolve this promise
+                mediaRecorder.current.onstop = async () => {
+                    // Close audio context
+                    if (audioContext.current) {
+                        try { await audioContext.current.close(); } catch (e) { }
+                        audioContext.current = null;
+                        recDestination.current = null;
+                        connectedNodes.current = {};
+                    }
+                    const blob = new Blob(recChunks.current, { type: window.__recordedMimeType || 'audio/webm' });
+                    await uploadRecording(blob);
+                    resolve();
+                    stopRecordingPromise.current = null;
+                };
+                mediaRecorder.current.stop();
+            } else {
+                resolve();
+                stopRecordingPromise.current = null;
+            }
+        });
+
+        return stopRecordingPromise.current;
+    };
+
+    // ── Screen+Audio recording (for Dashboard) ──
+    const startScreenRecording = async () => {
+        try {
+            // Capture display (screen/window/tab)
+            const displayStream = await navigator.mediaDevices.getDisplayMedia({
+                video: { frameRate: 30, width: { ideal: 1920 }, height: { ideal: 1080 } },
+                audio: true // capture system audio if browser supports
+            });
+
+            // Also mix in microphone
+            const micTrack = localTracks.current.audio?.getMediaStreamTrack?.();
+            const combinedStream = new MediaStream([
+                ...displayStream.getTracks(),
+                ...(micTrack ? [micTrack] : [])
+            ]);
+
+            screenRecChunks.current = [];
+            screenRecSeconds_ref.current = 0;
+
+            const codecs = ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', ''];
+            const mimeType = codecs.find(c => c === '' || MediaRecorder.isTypeSupported(c)) || '';
+            const options = mimeType ? { mimeType } : {};
+
+            screenMediaRecorder.current = new MediaRecorder(combinedStream, options);
+            window.__screenRecordedMimeType = screenMediaRecorder.current.mimeType;
+
+            screenMediaRecorder.current.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) screenRecChunks.current.push(e.data);
+            };
+
+            // If user stops sharing via browser UI, auto-stop recording
+            displayStream.getVideoTracks()[0].onended = () => {
+                if (screenMediaRecorder.current?.state !== 'inactive') stopScreenRecording();
+            };
+
+            screenMediaRecorder.current.start(1000);
+            setIsScreenRecording(true);
+            setScreenRecSeconds(0);
+            screenRecTimer.current = setInterval(() => {
+                screenRecSeconds_ref.current += 1;
+                setScreenRecSeconds(s => s + 1);
+            }, 1000);
+        } catch (err) {
+            // User cancelled screen picker or permission denied — silently ignore
+            if (err.name !== 'AbortError' && err.name !== 'NotAllowedError') {
+                console.error('[SCREEN-REC] Error:', err.message);
+            }
+        }
+    };
+
+    const stopScreenRecording = () => {
+        if (!isScreenRecording && screenMediaRecorder.current?.state === 'inactive') return;
+        clearInterval(screenRecTimer.current);
+        setIsScreenRecording(false);
+
+        if (screenMediaRecorder.current && screenMediaRecorder.current.state !== 'inactive') {
+            screenMediaRecorder.current.onstop = async () => {
+                const blob = new Blob(screenRecChunks.current, { type: window.__screenRecordedMimeType || 'video/webm' });
+                await uploadScreenRecording(blob);
+                // Stop all tracks to release screen capture indicator
+                screenMediaRecorder.current?.stream?.getTracks().forEach(t => t.stop());
+            };
+            screenMediaRecorder.current.stop();
         }
     };
 
     const exportTranscript = (fmt) => {
         if (!transcript) return;
+        const s = summary || { overview: 'No summary generated.', roles: [], keyPoints: [], actionItems: [], decisions: [] };
+
+        if (fmt === 'pdf') {
+            const doc = new jsPDF();
+            const pageWidth = doc.internal.pageSize.getWidth();
+            const margin = 20;
+
+            // 1. Header & Title
+            doc.setFillColor(0, 0, 0);
+            doc.rect(0, 0, pageWidth, 40, 'F');
+            doc.setTextColor(255, 255, 255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(22);
+            doc.text('SMARTMEET AI REPORT', margin, 25);
+            doc.setFontSize(10);
+            doc.text(`Meeting Room: ${roomId.toUpperCase()} | Generated: ${new Date().toLocaleString()}`, margin, 35);
+
+            let y = 55;
+            doc.setTextColor(0, 0, 0);
+
+            // 2. Executive Overview
+            doc.setFontSize(14);
+            doc.setFont('helvetica', 'bold');
+            doc.text('EXECUTIVE OVERVIEW', margin, y);
+            y += 8;
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'normal');
+            const lines = doc.splitTextToSize(s.overview, pageWidth - (margin * 2));
+            doc.text(lines, margin, y);
+            y += (lines.length * 6) + 15;
+
+            // 3. Roles & Responsibilities
+            if (s.roles?.length > 0) {
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('ROLES & RESPONSIBILITIES', margin, y);
+                autoTable(doc, {
+                    startY: y + 5,
+                    head: [['PERSON', 'ROLE', 'PRIMARY RESPONSIBILITIES']],
+                    body: s.roles.map(r => [r.person, r.role, r.responsibilities?.join(', ') || 'N/A']),
+                    theme: 'striped',
+                    headStyles: { fillColor: [0, 0, 0], textColor: [255, 255, 255], fontSize: 9 },
+                    styles: { fontSize: 8, cellPadding: 4 },
+                    margin: { left: margin }
+                });
+                y = doc.lastAutoTable.finalY + 15;
+            }
+
+            // 4. Key Discussion Points
+            if (s.keyPoints?.length > 0) {
+                if (y > 250) { doc.addPage(); y = 20; }
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('KEY DISCUSSION POINTS', margin, y);
+                y += 10;
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                s.keyPoints.forEach(pt => {
+                    const l = doc.splitTextToSize(`• ${pt}`, pageWidth - (margin * 2));
+                    doc.text(l, margin, y);
+                    y += (l.length * 5) + 3;
+                    if (y > 270) { doc.addPage(); y = 20; }
+                });
+                y += 10;
+            }
+
+            // 5. Action Items & Decisions
+            if (s.actionItems?.length > 0 || s.decisions?.length > 0) {
+                if (y > 240) { doc.addPage(); y = 20; }
+                doc.setFontSize(14);
+                doc.setFont('helvetica', 'bold');
+                doc.text('ACTION ITEMS & DECISIONS', margin, y);
+                y += 10;
+                doc.setFontSize(10);
+                doc.setFont('helvetica', 'normal');
+                [...(s.actionItems || []), ...(s.decisions || [])].forEach((item, i) => {
+                    const l = doc.splitTextToSize(`[${i + 1}] ${item}`, pageWidth - (margin * 2));
+                    doc.text(l, margin, y);
+                    y += (l.length * 5) + 3;
+                    if (y > 270) { doc.addPage(); y = 20; }
+                });
+            }
+
+            doc.save(`smartmeet-report-${roomId}.pdf`);
+            return;
+        }
+
         let content, mime, ext;
-        if (fmt === 'json') { content = JSON.stringify(transcript, null, 2); mime = 'application/json'; ext = 'json'; }
-        else { content = 'Speaker,Text,Start\n' + (transcript.segments || []).map(s => `${s.speaker},"${s.text.replace(/"/g, '\'')}",${s.startTime}`).join('\n'); mime = 'text/csv'; ext = 'csv'; }
+        if (fmt === 'json') {
+            const exportData = { meetingId: roomId, exportDate: new Date(), ...s, fullTranscript: transcript.segments };
+            content = JSON.stringify(exportData, null, 2); mime = 'application/json'; ext = 'json';
+        } else {
+            content = 'Speaker,Text,Start\n' + (transcript.segments || []).map(s => `${s.speaker},"${s.text.replace(/"/g, '\'')}",${s.startTime}`).join('\n');
+            mime = 'text/csv'; ext = 'csv';
+        }
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob([content], { type: mime }));
-        a.download = `smartmeet-transcript-${roomId}.${ext}`;
+        a.download = `smartmeet-data-${roomId}.${ext}`;
         a.click();
     };
     const sharingPeerId = Object.entries(peerStates).find(([, s]) => s?.screenSharing)?.[0];
     const sharingRemoteUser = remoteUsers.find(u => String(u.id) === String(sharingPeerId));
-    const anyoneSharing = isSharing || !!sharingRemoteUser;
+    const anyoneSharing = isSharing || !!sharingPeerId;
     const totalPeople = remoteUsers.length + 1;
     const myData = {
         id: user?.id || 'guest',
-        userName: user?.fullName || 'Guest',
-        userAvatar: user?.imageUrl || '',
+        userName: user?.name || 'Guest',
+        userAvatar: user?.avatar || '/defaultpic.png',
         videoTrack: localTracks.current.video,
         videoOn: videoOn
     };
     return (
-        <div className={cn("h-screen flex flex-col overflow-hidden font-sans transition-colors duration-500", D ? "bg-premium-bg text-gray-100" : "bg-gray-100 text-gray-900")}>
+        <div className="h-screen flex flex-col overflow-hidden font-sans transition-colors duration-500 bg-gray-50 text-black">
 
             <MeetingHeader
                 isRecording={isRecording}
                 recSeconds={recSeconds}
                 uploading={uploading}
                 setShowInvite={setShowInvite}
-                isDark={D}
+                participantCount={remoteUsers.length + 1}
+                setShowParticipants={setShowParticipants}
+                isHost={isHost}
+                handleLeave={handleLeave}
+                onEnd={() => setShowEndConfirm(true)}
             />
 
-            <main className="flex-1 min-h-0 flex flex-col p-4 gap-4 overflow-hidden relative">
-                {anyoneSharing ? (
-                    <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0 overflow-hidden">
-                        {/* Main Shared Screen */}
-                        <div className="flex-[3] lg:flex-[4] relative rounded-3xl overflow-hidden bg-black shadow-2xl ring-1 ring-white/10 min-h-0 flex flex-col group">
-                            {isSharing ? <ScreenSharePlayer track={screenTrack.current} /> : <RemoteVideoPlayer videoTrack={sharingRemoteUser?.videoTrack} />}
-                            <div className="absolute bottom-4 left-4 z-10 flex items-center gap-2.5 px-4 py-2 rounded-xl bg-black/60 backdrop-blur-xl border border-white/10">
-                                <ScreenShare size={14} className="text-premium-accent" />
-                                <span className="text-xs font-bold text-white">{isSharing ? 'You are presenting' : `${sharingRemoteUser?.userName || 'Someone'} is presenting`}</span>
+            {/* Notifications Popups */}
+            <div className="fixed top-20 left-6 z-[2000] flex flex-col gap-3 pointer-events-none">
+                <AnimatePresence>
+                    {notifications.map(n => (
+                        <motion.div
+                            key={n.id}
+                            initial={{ x: -100, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            exit={{ x: -100, opacity: 0 }}
+                            className="w-72 bg-white/90 backdrop-blur-xl border border-gray-100 rounded-2xl p-4 shadow-2xl flex items-start gap-3 pointer-events-auto"
+                        >
+                            <div className={cn(
+                                "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                                n.type === 'join' ? "bg-green-100 text-green-600" :
+                                    n.type === 'leave' ? "bg-red-100 text-red-600" :
+                                        "bg-amber-100 text-amber-600"
+                            )}>
+                                {n.type === 'join' ? <LogIn size={18} /> :
+                                    n.type === 'leave' ? <LogOut size={18} /> :
+                                        n.type === 'alert' ? <AlertCircle size={18} /> :
+                                            <Info size={18} />}
                             </div>
+                            <div className="flex-1 min-w-0 mt-0.5">
+                                <h4 className="text-xs font-black uppercase tracking-widest text-gray-900 truncate">{n.title}</h4>
+                                <p className="text-[11px] font-bold text-gray-400 mt-1 line-clamp-2">{n.message}</p>
+                            </div>
+                            <button
+                                onClick={() => setNotifications(prev => prev.filter(x => x.id !== n.id))}
+                                className="text-gray-300 hover:text-gray-900 transition-colors"
+                            >
+                                <X size={14} />
+                            </button>
+                        </motion.div>
+                    ))}
+                </AnimatePresence>
+            </div>
+
+            <main className="flex-1 min-h-0 relative flex flex-col bg-white overflow-hidden">
+                {anyoneSharing ? (
+                    <div className="flex-1 h-full flex flex-col sm:flex-row min-h-0 p-2 sm:p-4 gap-4">
+                        {/* Participants strip - Desktop only */}
+                        <div className="hidden sm:flex w-64 shrink-0 flex-col gap-4 overflow-y-auto pr-2 scrollbar-none border-r border-white/5">
+                            <div className="aspect-video w-full shrink-0 rounded-2xl overflow-hidden shadow-2xl border border-white/10 ring-1 ring-white/5">
+                                <UserTile
+                                    isYou user={myData}
+                                    peerState={{ muted: !micOn, handRaised, adminMuted }}
+                                    activeSpeaker={activeSpeaker === 'me'}
+                                    small
+                                    hideVideo={isSharing}
+                                />
+                            </div>
+                            {remoteUsers.map(u => (
+                                <div key={u.id} className="aspect-video w-full shrink-0 rounded-2xl overflow-hidden shadow-2xl border border-white/10 ring-1 ring-white/5">
+                                    <UserTile
+                                        user={u}
+                                        peerState={peerStates[u.agoraUid || u.id]}
+                                        activeSpeaker={activeSpeaker === u.agoraUid || activeSpeaker === u.id}
+                                        isHost={isHost}
+                                        onForceMute={() => forceMutePeer(u.agoraUid)}
+                                        onForceUnmute={() => forceUnmutePeer(u.agoraUid)}
+                                        small
+                                        hideVideo={String(u.id) === String(sharingPeerId) || String(u.agoraUid) === String(sharingPeerId)}
+                                    />
+                                </div>
+                            ))}
                         </div>
 
-                        {/* Right Panel for Participants */}
-                        <div className="md:w-[260px] lg:w-[300px] md:flex-[1] shrink-0 flex flex-row md:flex-col gap-3 overflow-x-auto md:overflow-y-auto pb-2 md:pb-0 md:pr-2 scrollbar-none md:scrollbar-thin max-h-[160px] md:max-h-full">
-                            <div className={cn(
-                                "flex md:grid gap-3 h-full md:h-auto auto-rows-max min-w-max md:min-w-0",
-                                totalPeople <= 3 ? "md:grid-cols-1" : "md:grid-cols-2"
-                            )}>
-                                <div className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: (!activeSpeaker || activeSpeaker === 'me') ? -1 : 999 }}>
-                                    <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} activeSpeaker={activeSpeaker === 'me'} small />
-                                </div>
-
-                                {remoteUsers.map(u => (
-                                    <div key={u.id} className="w-[180px] md:w-full aspect-video shrink-0 transition-all duration-300" style={{ order: (activeSpeaker === u.agoraUid || activeSpeaker === u.id) ? -1 : 1 }}>
-                                        <UserTile
-                                            user={u}
-                                            isDark={D}
-                                            peerState={peerStates[u.agoraUid || u.id]}
-                                            activeSpeaker={activeSpeaker === u.agoraUid || activeSpeaker === u.id}
-                                            isHost={isHost}
-                                            onForceMute={() => forceMutePeer(u.agoraUid)}
-                                            onForceUnmute={() => forceUnmutePeer(u.agoraUid)}
-                                            small
-                                        />
+                        {/* Main Stage */}
+                        <div className="flex-1 h-full min-h-0 relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gray-50 shadow-2xl border border-black/10 group">
+                            {isSharing ? (
+                                <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white">
+                                    <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shadow-inner">
+                                        <ScreenShare size={40} strokeWidth={1.5} />
                                     </div>
-                                ))}
+                                    <div className="text-center">
+                                        <p className="text-sm font-black uppercase tracking-[0.2em] text-black mb-1">You are presenting</p>
+                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Shared content is visible to others</p>
+                                    </div>
+                                </div>
+                            ) : (
+                                <RemoteVideoPlayer videoTrack={sharingRemoteUser?.videoTrack} fit="contain" />
+                            )}
+                            <div className="absolute inset-x-0 bottom-0 p-6 bg-gradient-to-t from-gray-900/10 to-transparent pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 px-4 py-2 rounded-xl bg-blue-600 backdrop-blur-md text-white shadow-xl border border-white/10">
+                                        <ScreenShare size={14} className="animate-pulse" />
+                                        <span className="text-[10px] font-black uppercase tracking-widest">
+                                            {isSharing ? 'Currently Presenting' : `Viewing ${sharingRemoteUser?.userName || 'Participant'}`}
+                                        </span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
                 ) : (
-                    <div className={cn(
-                        "flex-1 overflow-y-auto p-4 md:p-8 scrollbar-none grid place-content-center gap-4 md:gap-8 w-full mx-auto max-w-[1800px]",
-                        totalPeople === 1 ? "grid-cols-1" :
-                            totalPeople === 2 ? "grid-cols-1 md:grid-cols-2 max-w-[1400px]" :
-                                totalPeople <= 4 ? "grid-cols-2 max-w-[1400px]" :
-                                    "grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                    )}>
-                        <div className={cn("w-full transition-all duration-500", totalPeople === 1 ? "max-w-5xl mx-auto aspect-video" : "aspect-video")}>
-                            <UserTile isYou user={myData} isDark={D} peerState={{ muted: !micOn, handRaised }} activeSpeaker={activeSpeaker === 'me'} />
+                    /* ── NORMAL MODE ── */
+                    <div className="flex-1 h-full flex flex-col min-h-0">
+                        {/* Mobile: Full Speaker Mode */}
+                        <div className="sm:hidden flex-1 h-full relative">
+                            {(() => {
+                                const speaker = remoteUsers.find(u => activeSpeaker === u.agoraUid || activeSpeaker === u.id) || myData;
+                                const isMe = speaker.id === myData.id;
+                                return (
+                                    <div className="absolute inset-0 m-2 rounded-2xl overflow-hidden bg-white border border-black/10 shadow-xl">
+                                        <UserTile
+                                            isYou={isMe} user={speaker}
+                                            peerState={isMe ? { muted: !micOn, handRaised, adminMuted } : peerStates[speaker.agoraUid || speaker.id]}
+                                            activeSpeaker={true}
+                                            isHost={isHost}
+                                            onForceMute={!isMe ? () => forceMutePeer(speaker.agoraUid) : undefined}
+                                            onForceUnmute={!isMe ? () => forceUnmutePeer(speaker.agoraUid) : undefined}
+                                        />
+                                        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-center p-4">
+                                            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-6 py-2 rounded-full border border-black/5 shadow-xl">
+                                                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                                                <span className="text-[10px] font-black text-black uppercase tracking-widest">
+                                                    {isMe ? 'Listening to You' : `Viewing ${speaker.userName}`}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
                         </div>
-                        {remoteUsers.map(u => {
-                            if (String(u.id) === String(user?.id)) return null;
-                            return (
-                                <div key={u.id} className="w-full aspect-video transition-all duration-500">
+
+                        {/* Desktop: Grid View */}
+                        <div className="hidden sm:flex flex-col flex-1 min-h-0 h-full p-4 overflow-hidden">
+                            <div className={cn(
+                                "flex-1 min-h-0 grid gap-4 place-items-center",
+                                totalPeople === 1 ? "grid-cols-1" : "grid-cols-2"
+                            )}>
+                                {/* Me */}
+                                <div className={cn(
+                                    "relative rounded-3xl overflow-hidden bg-white border border-black/10 shadow-2xl w-full h-full",
+                                    totalPeople === 1 && "max-w-4xl max-h-[80%]"
+                                )}>
                                     <UserTile
-                                        user={u}
-                                        isDark={D}
-                                        peerState={peerStates[u.agoraUid || u.id]}
-                                        activeSpeaker={activeSpeaker === u.agoraUid || activeSpeaker === u.id}
-                                        isHost={isHost}
-                                        onForceMute={() => forceMutePeer(u.agoraUid || u.id)}
-                                        onForceUnmute={() => forceUnmutePeer(u.agoraUid || u.id)}
+                                        isYou user={myData}
+                                        peerState={{ muted: !micOn, handRaised, adminMuted }}
+                                        activeSpeaker={activeSpeaker === 'me'}
                                     />
+                                    {activeSpeaker === 'me' && (
+                                        <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-center py-4">
+                                            <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-full border border-black/10 shadow-md">
+                                                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                                <span className="text-[10px] font-black text-black uppercase tracking-widest">Speaking</span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            );
-                        })}
+
+                                {/* Active or First Remote Peer */}
+                                {remoteUsers.length > 0 && (() => {
+                                    const primary = remoteUsers.find(u => activeSpeaker === u.agoraUid || activeSpeaker === u.id) || remoteUsers[0];
+                                    return (
+                                        <div key={primary.id} className="relative w-full h-full rounded-3xl overflow-hidden bg-white border border-black/10 shadow-2xl transition-all">
+                                            <UserTile
+                                                user={primary}
+                                                peerState={peerStates[primary.agoraUid || primary.id]}
+                                                activeSpeaker={activeSpeaker === primary.agoraUid || activeSpeaker === primary.id}
+                                                isHost={isHost}
+                                                onForceMute={() => forceMutePeer(primary.agoraUid)}
+                                                onForceUnmute={() => forceUnmutePeer(primary.agoraUid)}
+                                            />
+                                            {(activeSpeaker === primary.agoraUid || activeSpeaker === primary.id) && (
+                                                <div className="absolute inset-x-0 top-0 z-20 flex items-center justify-center py-4">
+                                                    <div className="flex items-center gap-2 bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-full border border-black/10 shadow-md">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                                                        <span className="text-[10px] font-black text-black uppercase tracking-widest">{primary.userName}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })()}
+                            </div>
+
+                            {/* Desktop Overflow Strip */}
+                            {remoteUsers.length > 1 && (
+                                <div className="shrink-0 flex gap-4 overflow-x-auto scrollbar-none py-2">
+                                    {remoteUsers.slice(1).map(u => (
+                                        <div key={u.id} className="w-56 aspect-video shrink-0 rounded-2xl overflow-hidden border border-black/10 bg-white shadow-xl">
+                                            <UserTile
+                                                user={u}
+                                                peerState={peerStates[u.agoraUid || u.id]}
+                                                activeSpeaker={activeSpeaker === u.agoraUid || activeSpeaker === u.id}
+                                                isHost={isHost}
+                                                onForceMute={() => forceMutePeer(u.agoraUid)}
+                                                onForceUnmute={() => forceUnmutePeer(u.agoraUid)}
+                                                small
+                                            />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
                 <BotHUD botPhase={botPhase} phaseMsg={phaseMsg} countdown={countdown} />
+
+                {/* Session Ended Overlay */}
+                <AnimatePresence>
+                    {endMessage && (
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="absolute inset-0 z-[3000] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 text-center"
+                        >
+                            <motion.div initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} className="space-y-6">
+                                <div className="w-20 h-20 bg-red-500/10 rounded-full flex items-center justify-center mx-auto border border-red-500/20">
+                                    <PhoneOff size={32} className="text-red-500" />
+                                </div>
+                                <div>
+                                    <h2 className="text-3xl font-black text-white mb-2">Session Ended</h2>
+                                    <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">{endMessage}</p>
+                                </div>
+                                <div className="flex items-center justify-center gap-2 text-gray-500 text-xs font-black uppercase tracking-[0.2em]">
+                                    <Loader2 size={14} className="animate-spin" /> Redirecting...
+                                </div>
+                            </motion.div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </main>
 
             <MeetingFooter
@@ -863,18 +1436,62 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 isSharing={isSharing} toggleShare={toggleShare}
                 handRaised={handRaised} toggleHand={toggleHand}
                 isRecording={isRecording} startRecording={startRecording} stopRecording={stopRecording}
+                isScreenRecording={isScreenRecording}
+                startScreenRecording={startScreenRecording}
+                stopScreenRecording={stopScreenRecording}
+                screenRecSeconds={screenRecSeconds}
+                screenUploading={screenUploading}
                 setShowReacts={setShowReacts}
                 panel={panel} setPanel={setPanel}
                 messages={messages}
                 unread={unread} setUnread={setUnread}
                 handleLeave={handleLeave}
-                isDark={D}
+                isHost={isHost}
+                onEnd={() => setShowEndConfirm(true)}
+                hasAiSummary={!!summary}
+                showTranscript={showTranscript}
+                setShowTranscript={setShowTranscript}
             />
 
             <AnimatePresence>
+                {showEndConfirm && (
+                    <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+                        <motion.div
+                            initial={{ scale: 0.9, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            exit={{ scale: 0.9, opacity: 0 }}
+                            className="bg-white rounded-3xl p-8 max-w-sm w-full shadow-2xl border border-gray-100"
+                        >
+                            <h3 className="text-xl font-black mb-2">End Meeting?</h3>
+                            <p className="text-sm opacity-60 mb-6 font-medium">This will end the meeting for all participants. This action cannot be undone.</p>
+                            <div className="flex gap-3">
+                                <button
+                                    onClick={() => setShowEndConfirm(false)}
+                                    className="flex-1 py-3 rounded-xl border border-gray-100 font-bold hover:bg-gray-50 transition-all cursor-pointer"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={handleEndMeeting}
+                                    className="flex-1 py-3 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700 transition-all cursor-pointer border-none shadow-lg shadow-red-600/20"
+                                >
+                                    End Session
+                                </button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence>
+
+            <AnimatePresence>
                 {panel === 'chat' && (
-                    <motion.div initial={{ x: 340, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 340, opacity: 0 }} className={cn("fixed right-0 top-0 bottom-0 w-full sm:w-[340px] z-[1000] border-l shadow-2xl flex flex-col backdrop-blur-3xl transition-all", D ? "bg-premium-surface/90 border-white/10" : "bg-white/95 border-gray-200")}>
-                        <ChatPanel messages={messages} onSend={sendMsg} onClose={() => setPanel(null)} isDark={D} />
+                    <motion.div initial={{ x: 340, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 340, opacity: 0 }} className="fixed right-0 top-0 bottom-0 w-full sm:w-[340px] z-[1000] border-l shadow-2xl flex flex-col backdrop-blur-3xl transition-all bg-white border-gray-200">
+                        <ChatPanel messages={messages} onSend={sendMsg} onClose={() => setPanel(null)} />
+                    </motion.div>
+                )}
+                {panel === 'notes' && (
+                    <motion.div initial={{ x: 340, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 340, opacity: 0 }} className="fixed right-0 top-0 bottom-0 w-full sm:w-[340px] z-[1000] border-l shadow-2xl flex flex-col backdrop-blur-3xl transition-all bg-white border-gray-200">
+                        <NotesPanel notes={personalNotes} setNotes={setPersonalNotes} isSaving={isSavingNotes} onClose={() => setPanel(null)} />
                     </motion.div>
                 )}
             </AnimatePresence>
@@ -882,14 +1499,25 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             <AnimatePresence>
                 {showTranscript && (
                     <motion.div initial={{ x: 400, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 400, opacity: 0 }} className="fixed right-0 top-0 bottom-0 w-full sm:w-[400px] z-[1001] shadow-2xl flex flex-col backdrop-blur-3xl transition-all">
-                        <SummarySidebar transcript={transcript} summary={summary} onClose={() => setShowTranscript(false)} onExport={exportTranscript} isDark={D} />
+                        <SummarySidebar transcript={transcript} summary={summary} onClose={() => setShowTranscript(false)} onExport={exportTranscript} />
+                    </motion.div>
+                )}
+                {showParticipants && (
+                    <motion.div initial={{ x: 340, opacity: 0 }} animate={{ x: 0, opacity: 1 }} exit={{ x: 340, opacity: 0 }} className="fixed right-0 top-0 bottom-0 w-full sm:w-[340px] z-[1000] border-l shadow-2xl flex flex-col backdrop-blur-3xl transition-all bg-white border-gray-200">
+                        <ParticipantsPanel
+                            participants={[myData, ...remoteUsers]}
+                            onClose={() => setShowParticipants(false)}
+                            isHost={isHost}
+                            myId={user?.id}
+                            peerStates={peerStates}
+                        />
                     </motion.div>
                 )}
             </AnimatePresence>
 
-            <AnimatePresence>{showReacts && <SelectionModal options={REACTIONS} onSelect={sendReact} onClose={() => setShowReacts(false)} isDark={D} />}</AnimatePresence>
+            <AnimatePresence>{showReacts && <SelectionModal options={REACTIONS} onSelect={sendReact} onClose={() => setShowReacts(false)} />}</AnimatePresence>
             <AnimatePresence>{reactions.map(r => <FloatingReaction key={r.id} reactionKey={r.key} name={r.name} onDone={() => setReactions(p => p.filter(x => x.id !== r.id))} />)}</AnimatePresence>
-            <AnimatePresence>{showInvite && <InviteModal roomId={roomId} onClose={() => setShowInvite(false)} isDark={D} />}</AnimatePresence>
+            <AnimatePresence>{showInvite && <InviteModal roomId={roomId} onClose={() => setShowInvite(false)} />}</AnimatePresence>
         </div>
     );
 };

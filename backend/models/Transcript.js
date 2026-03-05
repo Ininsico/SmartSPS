@@ -15,6 +15,11 @@ const transcriptSchema = new mongoose.Schema({
         keyPoints: [String],
         actionItems: [String],
         decisions: [String],
+        roles: [{
+            person: String,
+            role: String,
+            responsibilities: [String]
+        }],
         raw: String,          // full Groq response
         generatedAt: Date,
     },

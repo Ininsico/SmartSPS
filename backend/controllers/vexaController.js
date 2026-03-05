@@ -8,14 +8,122 @@ const getGladiaHeaders = () => ({
     'X-Gladia-Key': (process.env.GLADIA_API_KEY || '').trim(),
 });
 
-// POST /api/vexa/start
-// We'll repurpose this to start Gladia if a recordingUrl is provided
+/**
+ * Shared internal function to generate summary without requiring a request/response context
+ */
+const generateSummaryInternal = async (meetingId, segments) => {
+    try {
+        const transcriptText = segments.map(s => `[${s.speaker}]: ${s.text}`).join('\n');
+        const prompt = `Act as an accurate meeting scribe. Generate a report BASED ONLY ON THE PROVIDED TRANSCRIPT.
+
+STRICT RULES:
+1. NO HALLUCINATIONS. If a role, decision, or action item is not explicitly mentioned, return an empty array [].
+2. NO PLACEHOLDERS. Do not use names like "John Doe" or generic tasks unless they are in the transcript.
+3. BE REALISTIC. If the meeting is a casual chat, reflect that in the overview. Don't force jargon.
+4. IDENTITY. Use the actual speaker names from the transcript.
+
+JSON FORMAT:
+{
+  "overview": "Truthful summary of the actual conversation.",
+  "roles": [{ "person": "Real Name", "role": "Title", "responsibilities": ["Actual task"] }],
+  "keyPoints": ["Actual point discussed"],
+  "actionItems": ["Actual task assigned"],
+  "decisions": ["Actual decision made"]
+}
+
+Transcript:
+${transcriptText.slice(0, 5000)}`;
+
+        const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
+            body: JSON.stringify({
+                model: 'llama-3.3-70b-versatile',
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0,
+                response_format: { type: 'json_object' }
+            }),
+        });
+
+        if (gRes.ok) {
+            const gData = await gRes.json();
+            const parsed = JSON.parse(gData.choices[0]?.message?.content || '{}');
+
+            const toStringArr = (arr) => Array.isArray(arr) ? arr.map(i => typeof i === 'string' ? i : JSON.stringify(i)) : [];
+
+            await Transcript.findOneAndUpdate(
+                { meetingId },
+                {
+                    $set: {
+                        summary: {
+                            overview: String(parsed.overview || 'Summarization complete.'),
+                            roles: Array.isArray(parsed.roles) ? parsed.roles : [],
+                            keyPoints: toStringArr(parsed.keyPoints),
+                            actionItems: toStringArr(parsed.actionItems),
+                            decisions: toStringArr(parsed.decisions),
+                            generatedAt: new Date()
+                        }
+                    }
+                }
+            );
+            console.log(`[INTERNAL-SUM] Success for ${meetingId}`);
+            return true;
+        }
+    } catch (e) {
+        console.error('[INTERNAL-SUM] Failed:', e.message);
+    }
+    return false;
+};
+
+/**
+ * Background worker to poll Gladia and trigger summary
+ */
+const pollAndProcess = async (meetingId, transcriptionId) => {
+    console.log(`[BG-TASK] Started for ${meetingId} (ID: ${transcriptionId})`);
+    const wait = (ms) => new Promise(res => setTimeout(res, ms));
+    const maxAttempts = 60; // 10 minutes max (10s intervals)
+
+    for (let i = 0; i < maxAttempts; i++) {
+        try {
+            await wait(10000); // Wait 10s between polls
+            const r = await fetch(`${GLADIA_BASE}/transcription/${transcriptionId}`, { headers: getGladiaHeaders() });
+            if (!r.ok) continue;
+
+            const data = await r.json();
+            if (data.status === 'done') {
+                const result = data.result || data;
+                const utterances = result.transcription?.utterances || [];
+                const segments = utterances.map(u => ({
+                    speaker: `Speaker ${u.speaker ?? '?'}`,
+                    text: u.content || u.text || '',
+                    startTime: u.start || 0,
+                    endTime: u.end || 0,
+                }));
+                const participants = [...new Set(segments.map(s => s.speaker))];
+
+                await Transcript.findOneAndUpdate(
+                    { meetingId },
+                    { status: 'completed', segments, participants }
+                );
+
+                await generateSummaryInternal(meetingId, segments);
+                console.log(`[BG-TASK] Fully completed for ${meetingId}`);
+                break;
+            } else if (data.status === 'error') {
+                console.error(`[BG-TASK] Gladia reported error for ${meetingId}`);
+                await Transcript.findOneAndUpdate({ meetingId }, { status: 'error' });
+                break;
+            }
+        } catch (err) {
+            console.error(`[BG-TASK] Iteration ${i} failed:`, err.message);
+        }
+    }
+};
+
 export const startBot = async (req, res) => {
     try {
         const { meetingId, recordingUrl } = req.body;
-        if (!recordingUrl) return res.status(400).json({ error: 'recordingUrl required for AI notes' });
-
-        console.log(`[GLADIA] Starting transcription for ${meetingId} | URL: ${recordingUrl}`);
+        if (!recordingUrl) return res.status(400).json({ error: 'recordingUrl required' });
 
         const r = await fetch(`${GLADIA_BASE}/transcription`, {
             method: 'POST',
@@ -27,16 +135,16 @@ export const startBot = async (req, res) => {
         });
 
         const data = await r.json();
-        if (!r.ok) {
-            console.error('[GLADIA] Start Failed:', data);
-            return res.status(r.status).json({ error: data.message || 'Gladia start failed', raw: data });
-        }
+        if (!r.ok) return res.status(r.status).json(data);
 
         await Transcript.findOneAndUpdate(
             { meetingId },
             { meetingId, status: 'processing', transcriptionId: data.id, audioUrl: recordingUrl },
-            { upsert: true, new: true }
+            { upsert: true }
         );
+
+        // LEAVE IT IN THE BACKGROUND. Sever will poll Gladia and summarize.
+        pollAndProcess(meetingId, data.id);
 
         res.json({ success: true, transcriptionId: data.id });
     } catch (err) {
@@ -44,185 +152,135 @@ export const startBot = async (req, res) => {
     }
 };
 
-// DELETE /api/vexa/stop/:meetingId (Legacy/Placeholder)
-export const stopBot = async (req, res) => {
-    res.json({ success: true, note: 'Gladia handles processing automatically' });
-};
+export const stopBot = async (req, res) => res.json({ success: true });
 
-// GET /api/vexa/transcript/:meetingId
 export const getTranscript = async (req, res) => {
     try {
         const { meetingId } = req.params;
         const doc = await Transcript.findOne({ meetingId });
-        if (!doc || !doc.transcriptionId) return res.status(404).json({ error: 'No transcription found' });
+        if (!doc || !doc.transcriptionId) return res.status(404).json({ error: 'Not found' });
 
         if (doc.status === 'completed' && doc.segments?.length > 0) {
-            return res.json({ meetingId, participants: doc.participants, segments: doc.segments });
+            return res.json({ meetingId, participants: doc.participants, segments: doc.segments, summary: doc.summary });
         }
 
-        const r = await fetch(`${GLADIA_BASE}/transcription/${doc.transcriptionId}`, {
-            headers: getGladiaHeaders(),
-        });
-
+        const r = await fetch(`${GLADIA_BASE}/transcription/${doc.transcriptionId}`, { headers: getGladiaHeaders() });
         const data = await r.json();
-        console.log(`[GLADIA] Status Check for ${meetingId}: ${data.status}`);
-
-        if (!r.ok) {
-            console.error('[GLADIA] Status Check Failed:', data);
-            return res.status(r.status).json(data);
-        }
 
         if (data.status === 'done') {
-            // Gladia V2 results are in data.result.transcription
             const result = data.result || data;
-            const transcriptData = result.transcription || {};
-            const utterances = transcriptData.utterances || [];
-
-            if (utterances.length === 0) {
-                console.warn('[GLADIA] Done but no utterances found in result structure', JSON.stringify(data).slice(0, 500));
-            }
-
+            const utterances = result.transcription?.utterances || [];
             const segments = utterances.map(u => ({
                 speaker: `Speaker ${u.speaker ?? '?'}`,
                 text: u.content || u.text || '',
                 startTime: u.start || 0,
                 endTime: u.end || 0,
             }));
-
             const participants = [...new Set(segments.map(s => s.speaker))];
 
             await Transcript.findOneAndUpdate(
                 { meetingId },
-                { status: 'completed', segments, participants, rawJson: data }
+                { status: 'completed', segments, participants }
             );
 
-            console.log(`[GLADIA] Transcription Completed for ${meetingId} | Segments: ${segments.length}`);
-            return res.json({ meetingId, participants, segments });
+            if (!doc.summary || !doc.summary.overview) {
+                generateSummaryInternal(meetingId, segments);
+            }
+
+            return res.json({ meetingId, participants, segments, summary: doc.summary });
         }
 
-        if (['error', 'failed', 'cancelled'].includes(data.status)) {
-            console.error('[GLADIA] Transcription Terminal Failure:', data);
-            await Transcript.findOneAndUpdate({ meetingId }, { status: 'failed' });
-            return res.status(500).json({ error: 'Transcription job failed on Gladia side', raw: data });
-        }
-
-        res.status(202).json({ status: data.status, message: 'Transcription in progress...' });
+        res.status(202).json({ status: data.status });
     } catch (err) {
-        console.error('[GLADIA] getTranscript Error:', err);
         res.status(500).json({ error: err.message });
     }
 };
 
-// GET /api/vexa/saved/:meetingId
 export const getSavedTranscript = async (req, res) => {
     try {
         const { meetingId } = req.params;
-        const doc = await Transcript.findOne({ meetingId }).lean();
-        const meeting = await Meeting.findOne({ roomId: meetingId }).select('chat').lean();
-
-        if (!doc && !meeting) return res.json({ found: false, note: 'No data saved yet' });
-        res.json({ ...doc, chat: meeting?.chat || [], found: true });
+        const [doc, meeting] = await Promise.all([
+            Transcript.findOne({ meetingId }).lean(),
+            Meeting.findOne({ roomId: meetingId }).select('chat personalNotes').lean()
+        ]);
+        res.json({ ...doc, chat: meeting?.chat || [], personalNotes: meeting?.personalNotes || [], found: !!(doc || meeting) });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// POST /api/vexa/summarize
 export const summarize = async (req, res) => {
     try {
         const { meetingId, segments = [], participants = [] } = req.body;
-        if (!meetingId) return res.status(400).json({ error: 'meetingId required' });
-        if (segments.length === 0) return res.status(400).json({ error: 'No transcript segments to summarize' });
+        const transcriptText = segments.map(s => `[${s.speaker}]: ${s.text}`).join('\n');
+        const prompt = `Act as a Senior Technical Project Manager. JSON: { "overview": "", "roles": [], "keyPoints": [], "actionItems": [], "decisions": [] }. Participants: ${participants.join(', ')}. Transcript:\n${transcriptText.slice(0, 5000)}`;
 
-        const transcriptText = segments
-            .map(s => `[${s.speaker}]: ${s.text}`)
-            .join('\n');
-
-        const prompt = `Create a highly DETAILED and COMPREHENSIVE meeting report from the following transcript.
-The report should be structured as JSON and use the exact format below.
-
-IMPORTANT INSTRUCTION: If the transcript is mostly silent, contains very few words, or lacks any meaningful conversation, return EXACTLY this JSON:
-{
-  "overview": "Not enough data collected during this meeting to create a proper summary. The recording did not capture enough conversational content or was too brief.",
-  "keyPoints": [],
-  "actionItems": [],
-  "decisions": []
-}
-
-Otherwise, use this normal format:
-{
-  "overview": "A detailed narrative overview of the meeting (at least 3-4 paragraphs).",
-  "keyPoints": ["Highly detailed point 1 with context", "..."],
-  "actionItems": ["Specific task for person X", "..."],
-  "decisions": ["Formal decision made", "..."]
-}
-Ensure the tone is professional yet descriptive. Focus on the relationship between topics discussed.
-
-Meeting participants: ${participants.join(', ') || 'Unknown'}
-
-Transcript:
-${transcriptText.slice(0, 32000)}`;
-
-        const groqRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        const gRes = await fetch('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${(process.env.GROQ_API_KEY || '').trim()}`,
-            },
+            headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${process.env.GROQ_API_KEY}` },
             body: JSON.stringify({
                 model: 'llama-3.1-8b-instant',
                 messages: [{ role: 'user', content: prompt }],
-                max_tokens: 1024,
-                temperature: 0.3,
+                temperature: 0.1,
+                response_format: { type: 'json_object' }
             }),
         });
+        if (!gRes.ok) throw new Error('Groq failed');
+        const gData = await gRes.json();
+        const parsed = JSON.parse(gData.choices[0]?.message?.content || '{}');
 
-        if (!groqRes.ok) {
-            const errBody = await groqRes.json().catch(() => ({}));
-            console.error('[GROQ] Summarization failed:', errBody);
-            return res.status(groqRes.status).json({ error: 'AI Summarization failed', raw: errBody });
-        }
-
-        const groqData = await groqRes.json();
-        const rawText = groqData.choices?.[0]?.message?.content || '';
-        console.log(`[GROQ] Raw Output for ${meetingId} (Length: ${rawText.length})`);
-
-        let parsed;
-        try {
-            const clean = rawText.replace(/```json?/gi, '').replace(/```/g, '').trim();
-            parsed = JSON.parse(clean);
-        } catch {
-            console.warn('[GROQ] Failed to parse JSON, falling back to raw output');
-            parsed = { overview: rawText, keyPoints: [], actionItems: [], decisions: [] };
-        }
-
+        const toStringArr = (arr) => Array.isArray(arr) ? arr.map(i => typeof i === 'string' ? i : JSON.stringify(i)) : [];
         const summaryDoc = {
-            overview: parsed.overview || '',
-            keyPoints: parsed.keyPoints || [],
-            actionItems: parsed.actionItems || [],
-            decisions: parsed.decisions || [],
-            raw: rawText,
-            generatedAt: new Date(),
+            overview: String(parsed.overview || ''),
+            roles: Array.isArray(parsed.roles) ? parsed.roles : [],
+            keyPoints: toStringArr(parsed.keyPoints),
+            actionItems: toStringArr(parsed.actionItems),
+            decisions: toStringArr(parsed.decisions),
+            generatedAt: new Date()
         };
 
-        await Transcript.findOneAndUpdate(
-            { meetingId },
-            { $set: { summary: summaryDoc } },
-            { upsert: true }
-        );
-
-        console.log(`[GROQ] Summary stored for ${meetingId}`);
+        await Transcript.findOneAndUpdate({ meetingId }, { $set: { summary: summaryDoc } }, { upsert: true });
         res.json({ meetingId, summary: summaryDoc });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }
 };
 
-// GET /api/vexa/status/:meetingId
 export const getStatus = async (req, res) => {
     try {
         const doc = await Transcript.findOne({ meetingId: req.params.meetingId });
         res.json({ running: !!(doc && doc.status === 'processing') });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+};
+export const updateTranscript = async (req, res) => {
+    try {
+        const { meetingId } = req.params;
+        const { summary } = req.body;
+        const userId = req.auth.userId;
+
+        const [transcript, meeting] = await Promise.all([
+            Transcript.findOne({ meetingId }),
+            Meeting.findOne({ roomId: meetingId }).select('hostId')
+        ]);
+
+        if (!meeting) return res.status(404).json({ error: 'Meeting not found' });
+        if (String(meeting.hostId) !== String(userId)) return res.status(403).json({ error: 'Only the meeting host can edit the report' });
+
+        if (!transcript) return res.status(404).json({ error: 'Transcript data not found' });
+
+        // Update the summary field
+        if (summary) {
+            transcript.summary = {
+                ...transcript.summary,
+                ...summary,
+                generatedAt: transcript.summary?.generatedAt || new Date()
+            };
+            await transcript.save();
+        }
+
+        res.json({ success: true, summary: transcript.summary });
     } catch (err) {
         res.status(500).json({ error: err.message });
     }

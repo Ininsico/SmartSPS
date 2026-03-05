@@ -29,6 +29,12 @@ const meetingSchema = new mongoose.Schema({
         text: { type: String, required: true },
         timestamp: { type: Date, default: Date.now },
     }],
+    personalNotes: [{
+        userId: { type: String, required: true },
+        userName: { type: String },
+        userAvatar: { type: String },
+        content: { type: String, default: '' },
+    }],
 }, { timestamps: true });
 
 meetingSchema.index({ hostId: 1 });

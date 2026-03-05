@@ -82,4 +82,13 @@
   .animate-flash-rtl {
     animation: flash-rtl 0.8s cubic-bezier(0.19, 1, 0.22, 1) forwards;
   }
+
+  /* Agora Video Fit Utilities */
+  .object-contain video {
+    object-fit: contain !important;
+  }
+
+  .object-cover video {
+    object-fit: cover !important;
+  }
 }

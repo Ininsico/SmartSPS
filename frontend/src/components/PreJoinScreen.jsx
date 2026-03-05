@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { mediaManager } from '../mediaManager';
 import { cn } from '../utils';
 
-const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
+const PreJoinScreen = ({ roomId, onJoin, onBack }) => {
     const [micOn, setMicOn] = useState(true);
     const [videoOn, setVideoOn] = useState(true);
     const streamRef = useRef(null);
@@ -59,13 +59,8 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
         onJoin({ micOn, videoOn });
     };
 
-    const D = isDarkMode;
-
     return (
-        <div className={cn(
-            "min-h-screen flex flex-col items-center justify-center p-6 sm:p-12 transition-colors duration-500",
-            D ? "bg-premium-bg text-white" : "bg-white text-black"
-        )}>
+        <div className="min-h-screen flex flex-col items-center justify-center p-6 sm:p-12 transition-colors duration-500 bg-white text-black">
             <motion.div
                 initial={{ opacity: 0, scale: 0.95 }}
                 animate={{ opacity: 1, scale: 1 }}
@@ -74,19 +69,13 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
                 {/* Header Section */}
                 <div className="text-center space-y-3">
                     <h1 className="text-4xl sm:text-5xl font-black tracking-tight">Ready to join?</h1>
-                    <p className={cn(
-                        "text-lg font-bold tracking-tight",
-                        D ? "opacity-40" : "text-gray-500"
-                    )}>
-                        Meeting Code: <span className="text-premium-accent">{roomId.toUpperCase()}</span>
+                    <p className="text-lg font-bold tracking-tight text-black/40">
+                        Meeting Code: <span className="text-black font-black">{roomId.toUpperCase()}</span>
                     </p>
                 </div>
 
                 {/* Preview Card */}
-                <div className={cn(
-                    "w-full max-w-2xl aspect-video rounded-[32px] overflow-hidden relative shadow-2xl border-4 transition-all",
-                    D ? "bg-premium-surface border-white/5" : "bg-gray-100 border-gray-100"
-                )}>
+                <div className="w-full max-w-2xl aspect-video rounded-[32px] overflow-hidden relative shadow-2xl border-4 transition-all bg-gray-100 border-gray-100">
                     <video
                         ref={videoRef}
                         autoPlay
@@ -138,10 +127,7 @@ const PreJoinScreen = ({ roomId, onJoin, onBack, isDarkMode }) => {
                 <div className="flex flex-col sm:flex-row items-center gap-4 w-full justify-center">
                     <button
                         onClick={onBack}
-                        className={cn(
-                            "h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 border-none cursor-pointer flex items-center gap-2",
-                            D ? "bg-white/5 text-white hover:bg-white/10" : "bg-gray-100 text-black hover:bg-gray-200"
-                        )}
+                        className="h-14 px-8 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-95 border-none cursor-pointer flex items-center gap-2 bg-gray-100 text-black hover:bg-gray-200"
                     >
                         <ArrowLeft size={16} /> Go Back
                     </button>

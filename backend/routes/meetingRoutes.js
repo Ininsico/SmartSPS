@@ -1,19 +1,24 @@
 import express from 'express';
 import mongoose from 'mongoose';
 import Meeting from '../models/Meeting.js';
-import { getMeetingHistory, scheduleMeeting, joinMeeting, finishMeeting, leaveMeeting, saveChatMessage } from '../controllers/meetingController.js';
-import { ClerkExpressWithAuth } from '@clerk/clerk-sdk-node';
+import {
+    getMeetingHistory, scheduleMeeting, joinMeeting, finishMeeting, leaveMeeting,
+    saveChatMessage, savePersonalNotes, getPersonalNotes
+} from '../controllers/meetingController.js';
+import authMiddleware from '../middleware/authMiddleware.js';
 import pusher from '../pusher.js';
 
 const router = express.Router();
 
-router.get('/history', ClerkExpressWithAuth(), getMeetingHistory);
-router.post('/schedule', ClerkExpressWithAuth(), scheduleMeeting);
-router.post('/join', ClerkExpressWithAuth(), joinMeeting);
-router.post('/leave/:roomId', ClerkExpressWithAuth(), leaveMeeting);
-router.post('/end/:roomId', ClerkExpressWithAuth(), finishMeeting);
-router.post('/chat/:roomId', ClerkExpressWithAuth(), saveChatMessage);
-router.get('/chat/:roomId', ClerkExpressWithAuth(), async (req, res) => {
+router.get('/history', authMiddleware, getMeetingHistory);
+router.post('/schedule', authMiddleware, scheduleMeeting);
+router.post('/join', authMiddleware, joinMeeting);
+router.post('/leave/:roomId', authMiddleware, leaveMeeting);
+router.post('/end/:roomId', authMiddleware, finishMeeting);
+router.post('/chat/:roomId', authMiddleware, saveChatMessage);
+router.post('/notes/:roomId', authMiddleware, savePersonalNotes);
+router.get('/notes/:roomId', authMiddleware, getPersonalNotes);
+router.get('/chat/:roomId', authMiddleware, async (req, res) => {
     try {
         const { roomId } = req.params;
         const meeting = await Meeting.findOne({ roomId }).select('chat').lean();
@@ -23,7 +28,7 @@ router.get('/chat/:roomId', ClerkExpressWithAuth(), async (req, res) => {
         res.status(500).json({ error: 'Failed' });
     }
 });
-router.get('/participants/:roomId', ClerkExpressWithAuth(), async (req, res) => {
+router.get('/participants/:roomId', authMiddleware, async (req, res) => {
     try {
         const { roomId } = req.params;
         const meeting = await Meeting.findOne({ roomId }).select('participants').lean();
@@ -33,26 +38,26 @@ router.get('/participants/:roomId', ClerkExpressWithAuth(), async (req, res) => 
         res.status(500).json({ error: 'Failed' });
     }
 });
-router.post('/react/:roomId', ClerkExpressWithAuth(), (req, res) => {
+router.post('/react/:roomId', authMiddleware, (req, res) => {
     const { roomId } = req.params;
     const { key, name } = req.body;
     pusher.trigger(`room-${roomId}`, 'react', { key, name });
     res.json({ success: true });
 });
-router.post('/state/:roomId', ClerkExpressWithAuth(), (req, res) => {
+router.post('/state/:roomId', authMiddleware, (req, res) => {
     const { roomId } = req.params;
     const { uid, state } = req.body;
     pusher.trigger(`room-${roomId}`, 'state', { uid, state });
     res.json({ success: true });
 });
-router.post('/profile/:roomId', ClerkExpressWithAuth(), (req, res) => {
+router.post('/profile/:roomId', authMiddleware, (req, res) => {
     const { roomId } = req.params;
     const { uid, name, pic } = req.body;
     pusher.trigger(`room-${roomId}`, 'profile', { uid, name, pic });
     res.json({ success: true });
 });
 
-router.post('/admin-mute/:roomId', ClerkExpressWithAuth(), (req, res) => {
+router.post('/admin-mute/:roomId', authMiddleware, (req, res) => {
     const { roomId } = req.params;
     const { targetUid, action } = req.body;
     pusher.trigger(`room-${roomId}`, 'admin-mute', { targetUid, action });

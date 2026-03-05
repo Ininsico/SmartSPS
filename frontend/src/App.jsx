@@ -4,7 +4,7 @@ import LandingPage from './LandingPage';
 import MeetingRoom from './MeetingRoom';
 import LoginPage from './LoginPage';
 import PreJoinScreen from './components/PreJoinScreen';
-import { SignedIn, SignedOut, useUser, useClerk, RedirectToSignIn } from '@clerk/clerk-react';
+import { useAuthContext } from './AuthContext';
 import { motion } from 'framer-motion';
 import ErrorBoundary from './ErrorBoundary';
 import NotFoundPage from './NotFoundPage';
@@ -13,24 +13,17 @@ import { mediaManager } from './mediaManager';
 import { cn } from './utils';
 
 function App() {
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    const saved = localStorage.getItem('theme');
-    if (!saved) return true;
-    return saved === 'dark';
-  });
   const [mediaConfig, setMediaConfig] = useState({ micOn: true, videoOn: true });
   const [isHost, setIsHost] = useState(false);
 
-  const { isLoaded, isSignedIn } = useUser();
-  const { signOut } = useClerk();
+  const { isLoaded, isSignedIn, logout } = useAuthContext();
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
-    localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-    document.documentElement.style.backgroundColor = isDarkMode ? '#1a0a0a' : '#ffffff';
-    document.body.style.backgroundColor = isDarkMode ? '#1a0a0a' : '#ffffff';
-  }, [isDarkMode]);
+    document.documentElement.style.backgroundColor = '#ffffff';
+    document.body.style.backgroundColor = '#ffffff';
+  }, []);
 
   // Handle legacy ?room= URL redirects
   useEffect(() => {
@@ -66,20 +59,14 @@ function App() {
   };
 
   const handleLeave = () => {
-    navigate(isSignedIn ? '/dashboard' : '/');
+    navigate(isSignedIn ? '/dashboard' : '/', { state: { refresh: true } });
   };
 
   if (!isLoaded) {
     return (
-      <div className={cn(
-        "h-screen flex items-center justify-center transition-colors duration-300",
-        isDarkMode ? "bg-premium-bg" : "bg-white"
-      )}>
+      <div className="h-screen flex items-center justify-center transition-colors duration-300 bg-white">
         <motion.div animate={{ opacity: [0.3, 1, 0.3] }} transition={{ repeat: Infinity, duration: 1.5 }}>
-          <span className={cn(
-            "font-black text-2xl tracking-tighter",
-            isDarkMode ? "text-white" : "text-black"
-          )}>smartMeet</span>
+          <span className="font-black text-2xl tracking-tighter text-black">smartMeet</span>
         </motion.div>
       </div>
     );
@@ -87,20 +74,12 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className={cn(
-        "min-h-screen transition-colors duration-300",
-        isDarkMode ? "bg-premium-bg text-white" : "bg-white text-black"
-      )}>
+      <div className="min-h-screen transition-colors duration-300 bg-white text-black">
         <Routes>
           {/* Public Routes - but redirect if signed in */}
           <Route path="/" element={
             isSignedIn ? <Navigate to="/dashboard" replace /> : (
-              <LandingPage
-                onJoin={handleJoinMeeting}
-                onStartMeeting={() => navigate('/login')}
-                isDarkMode={isDarkMode}
-                setIsDarkMode={setIsDarkMode}
-              />
+              <LandingPage />
             )
           } />
 
@@ -108,7 +87,15 @@ function App() {
             isSignedIn ? <Navigate to="/dashboard" replace /> : (
               <LoginPage
                 onBack={() => navigate('/')}
-                isDarkMode={isDarkMode}
+              />
+            )
+          } />
+
+          <Route path="/signup" element={
+            isSignedIn ? <Navigate to="/dashboard" replace /> : (
+              <LoginPage
+                onBack={() => navigate('/')}
+                initialMode="register"
               />
             )
           } />
@@ -117,11 +104,9 @@ function App() {
           <Route path="/dashboard" element={
             isSignedIn ? (
               <Dashboard
-                isDarkMode={isDarkMode}
-                setIsDarkMode={setIsDarkMode}
                 onNewMeeting={handleStartMeeting}
                 onSignOut={() => {
-                  signOut();
+                  logout();
                   navigate('/');
                 }}
               />
@@ -132,10 +117,8 @@ function App() {
             isSignedIn ? (
               <RouteWrapper component={PreJoinScreen}
                 props={{
-                  onJoin: (id, config) => enterMeeting(id, config),
-                  onBack: () => navigate('/dashboard'),
-                  isDarkMode: isDarkMode,
-                  setIsDarkMode: setIsDarkMode
+                  onJoin: (id, config) => enterMeeting(id.trim(), config),
+                  onBack: () => navigate('/dashboard')
                 }}
               />
             ) : <Navigate to="/login" replace />
@@ -147,9 +130,7 @@ function App() {
                 props={{
                   onLeave: handleLeave,
                   initialConfig: mediaConfig,
-                  isHost: isHost,
-                  isDarkMode: isDarkMode,
-                  setIsDarkMode: setIsDarkMode
+                  isHost: isHost
                 }}
               />
             ) : <Navigate to="/login" replace />
@@ -168,7 +149,8 @@ function App() {
 
 // Small helper to pass params from URL to components that expect them in props (to minimize component refactoring)
 function RouteWrapper({ component: Component, props }) {
-  const { roomId } = useParams();
+  const { roomId: rawRoomId } = useParams();
+  const roomId = rawRoomId?.trim();
   const { onJoin, ...otherProps } = props;
 
   // Intercept onJoin to include roomId if it's the preview screen

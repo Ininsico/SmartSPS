@@ -1,15 +1,13 @@
 import React from 'react';
-import { Home, LayoutGrid, Calendar, History, Settings, Video } from 'lucide-react';
+import { Home, LayoutGrid, Calendar, Video } from 'lucide-react';
 
-const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, activeSection }) => {
-    const darkMaroon = '#000000';
-
+const Sidebar = ({ onScheduleClick, onRecordingsClick, onHomeClick, activeSection }) => {
     const styles = {
         sidebar: {
             width: '64px',
             height: '100%',
-            backgroundColor: isDarkMode ? darkMaroon : '#ffffff',
-            borderRight: `1px solid ${isDarkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.05)'}`,
+            backgroundColor: '#ffffff',
+            borderRight: '1px solid rgba(0,0,0,0.05)',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -23,7 +21,7 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, 
             gap: '1.25rem'
         },
         iconWrapper: {
-            color: isDarkMode ? 'rgba(255,255,255,0.3)' : '#aaa',
+            color: '#aaa',
             cursor: 'pointer',
             padding: '0.6rem',
             borderRadius: '10px',
@@ -47,7 +45,7 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, 
 
     return (
         <aside style={styles.sidebar}>
-            <Home size={22} onClick={onHomeClick} style={{ color: isDarkMode ? '#fff' : '#000', marginBottom: '2rem', cursor: 'pointer' }} title="Home" />
+            <Home size={22} onClick={onHomeClick} style={{ color: '#000', marginBottom: '2rem', cursor: 'pointer' }} title="Home" />
 
             <div style={styles.iconGroup}>
                 {menuItems.map((item, idx) => (
@@ -66,7 +64,6 @@ const Sidebar = ({ isDarkMode, onScheduleClick, onRecordingsClick, onHomeClick, 
             </div>
 
             <div style={{ marginTop: 'auto' }}>
-                <Settings size={20} style={styles.iconWrapper} title="Settings" />
             </div>
         </aside>
     );
