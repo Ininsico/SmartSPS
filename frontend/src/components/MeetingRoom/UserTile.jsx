@@ -6,7 +6,13 @@ import { cn } from '../../utils';
 export const RemoteVideoPlayer = ({ videoTrack, fit = 'cover' }) => {
     const videoRef = useRef(null);
     useEffect(() => {
-        if (videoTrack && videoRef.current) videoTrack.play(videoRef.current);
+        if (!videoRef.current) return;
+        if (videoTrack) {
+            videoTrack.play(videoRef.current);
+        }
+        return () => {
+            if (videoTrack) videoTrack.stop();
+        };
     }, [videoTrack]);
     return (
         <div ref={videoRef} className={cn("w-full h-full block", fit === 'cover' ? "object-cover" : "object-contain")} />

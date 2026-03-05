@@ -1184,7 +1184,13 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         a.click();
     };
     const sharingPeerId = Object.entries(peerStates).find(([, s]) => s?.screenSharing)?.[0];
-    const sharingRemoteUser = remoteUsers.find(u => String(u.id) === String(sharingPeerId));
+    // sharingPeerId is an Agora UID string — must match against agoraUid, NOT Clerk ID
+    const sharingRemoteUser = sharingPeerId
+        ? remoteUsers.find(u =>
+            String(u.agoraUid) === String(sharingPeerId) ||
+            String(u.id) === String(sharingPeerId)
+        )
+        : null;
     const anyoneSharing = isSharing || !!sharingPeerId;
     const totalPeople = remoteUsers.length + 1;
     const myData = {
