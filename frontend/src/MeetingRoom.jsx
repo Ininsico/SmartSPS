@@ -54,6 +54,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const [personalNotes, setPersonalNotes] = useState('');
     const [isSavingNotes, setIsSavingNotes] = useState(false);
     const [showEndConfirm, setShowEndConfirm] = useState(false);
+    const [screenTrackState, setScreenTrackState] = useState(null); // mirrors screenTrack ref for rendering
 
     // Save Notes Debounce
     const notesTimeout = useRef(null);
@@ -452,6 +453,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
     const stopShare = async () => {
         const track = screenTrack.current;
         screenTrack.current = null;
+        setScreenTrackState(null);
         setIsSharing(false);
         syncState({ muted: !micOn, handRaised, screenSharing: false });
         if (track) {
@@ -469,6 +471,7 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             if (localTracks.current.video) await rtc.current.unpublish(localTracks.current.video).catch(() => { });
             await rtc.current.publish(track);
             screenTrack.current = track;
+            setScreenTrackState(track);
             setIsSharing(true);
             syncState({ muted: !micOn, handRaised, screenSharing: true });
             track.on('track-ended', () => stopShare());
@@ -1274,17 +1277,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                         </div>
 
                         {/* Main Stage */}
-                        <div className="flex-1 h-full min-h-0 relative rounded-2xl sm:rounded-3xl overflow-hidden bg-gray-50 shadow-2xl border border-black/10 group">
+                        <div className="flex-1 h-full min-h-0 relative rounded-2xl sm:rounded-3xl overflow-hidden bg-black shadow-2xl border border-black/10 group">
                             {isSharing ? (
-                                <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white">
-                                    <div className="w-20 h-20 rounded-full bg-blue-50 flex items-center justify-center text-blue-600 shadow-inner">
-                                        <ScreenShare size={40} strokeWidth={1.5} />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-sm font-black uppercase tracking-[0.2em] text-black mb-1">You are presenting</p>
-                                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">Shared content is visible to others</p>
-                                    </div>
-                                </div>
+                                <ScreenSharePlayer track={screenTrackState} />
                             ) : (
                                 <RemoteVideoPlayer videoTrack={sharingRemoteUser?.videoTrack} fit="contain" />
                             )}
