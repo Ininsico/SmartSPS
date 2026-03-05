@@ -1,4 +1,17 @@
 {
+    "redirects": [
+        {
+            "source": "/:match(.*)",
+            "has": [
+                {
+                    "type": "host",
+                    "value": "smartmeet24.com"
+                }
+            ],
+            "destination": "https://www.smartmeet24.com/:match",
+            "permanent": true
+        }
+    ],
     "rewrites": [
         {
             "source": "/(.*)",

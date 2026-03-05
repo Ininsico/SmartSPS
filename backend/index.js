@@ -20,21 +20,35 @@ app.use(cors({
 
 app.use(express.json({ limit: '50mb' }));
 
-// MongoDB Connection
+// MongoDB Connection — compatible with Vercel serverless
+let isConnected = false;
+
 const connectDB = async () => {
+    if (isConnected && mongoose.connection.readyState === 1) return;
     try {
-        if (mongoose.connection.readyState === 1) return;
-        console.log('⏳ Connecting to MongoDB...');
         await mongoose.connect(process.env.MONGODB_URI, {
-            family: 4, // Force IPv4 to fix slow DNS resolution (Common Node.js/Windows issue)
-            serverSelectionTimeoutMS: 5000
+            bufferCommands: false,          // Fail immediately instead of buffering forever
+            serverSelectionTimeoutMS: 10000,
+            socketTimeoutMS: 45000,
         });
+        isConnected = true;
         console.log('✅ Connected to MongoDB');
     } catch (err) {
+        isConnected = false;
         console.error('❌ MongoDB Connection Error:', err.message);
+        throw err;
     }
 };
-connectDB();
+
+// Middleware: ensure DB is connected before every request
+app.use(async (req, res, next) => {
+    try {
+        await connectDB();
+        next();
+    } catch (err) {
+        res.status(503).json({ error: 'Database unavailable', detail: err.message });
+    }
+});
 
 app.use('/api/auth', authRoutes);
 app.use('/api/meetings', meetingRoutes);
