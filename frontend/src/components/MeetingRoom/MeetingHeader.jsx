@@ -4,7 +4,11 @@ import { cn } from '../../utils';
 
 const fmtTime = (s) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
 
-const MeetingHeader = ({ isRecording, recSeconds, uploading, setShowInvite, participantCount, setShowParticipants, isHost, handleLeave, onEnd }) => {
+const MeetingHeader = ({
+    isRecording, recSeconds,
+    isScreenRecording, screenRecSeconds,
+    uploading, setShowInvite, participantCount, setShowParticipants, isHost, handleLeave, onEnd
+}) => {
     const { logout } = useAuthContext();
     return (
         <header className="h-16 px-6 flex items-center justify-between z-50 transition-all shrink-0 bg-white/90 border-b border-gray-200 backdrop-blur-xl">
@@ -18,15 +22,22 @@ const MeetingHeader = ({ isRecording, recSeconds, uploading, setShowInvite, part
                 </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1 sm:gap-3">
                 {isRecording && (
-                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500 border border-red-600 text-white mr-2">
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-500 border border-red-600 text-white">
                         <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
-                        <span className="text-[10px] font-black tracking-widest uppercase">REC {fmtTime(recSeconds)}</span>
+                        <span className="text-[10px] font-black tracking-widest uppercase truncate max-w-[60px] sm:max-w-none">AI REC {fmtTime(recSeconds)}</span>
                     </div>
                 )}
 
-                {uploading && <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest mr-4">Saving...</span>}
+                {isScreenRecording && (
+                    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-blue-500 border border-blue-600 text-white">
+                        <span className="w-2 h-2 rounded-full bg-white animate-pulse" />
+                        <span className="text-[10px] font-black tracking-widest uppercase truncate max-w-[60px] sm:max-w-none">SCR {fmtTime(screenRecSeconds)}</span>
+                    </div>
+                )}
+
+                {uploading && <span className="text-[10px] font-bold opacity-40 uppercase tracking-widest animate-pulse mx-2">Saving...</span>}
 
                 <div className="flex items-center gap-1.5 mr-2">
                     <button

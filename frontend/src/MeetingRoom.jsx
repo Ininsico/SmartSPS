@@ -572,7 +572,6 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                     await rtc.current.subscribe(u, type);
                     upsertUser(u.uid, { [type === 'video' ? 'videoTrack' : 'audioTrack']: u[type === 'video' ? 'videoTrack' : 'audioTrack'] });
                     if (type === 'audio') {
-                        u.audioTrack.play();
                         broadcastProfile();
                         if (audioContext.current && recDestination.current && u.audioTrack) {
                             try {
@@ -597,11 +596,17 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 });
 
                 rtc.current.on('user-left', (u) => {
-                    const leaveUid = Number(u.uid);
+                    const leaveUid = String(u.uid);
                     setRemoteUsers(prev => prev.filter(x =>
-                        String(x.id) !== String(leaveUid) &&
-                        Number(x.agoraUid) !== leaveUid
+                        String(x.id) !== leaveUid &&
+                        String(x.agoraUid) !== leaveUid
                     ));
+                    // Cleanup peer state so screen sharing layout resets if they were sharing
+                    setPeerStates(prev => {
+                        const next = { ...prev };
+                        delete next[leaveUid];
+                        return next;
+                    });
                 });
 
                 rtc.current.on('volume-indicator', (volumes) => {
@@ -898,61 +903,53 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
         }
     };
 
-    const startRecording = async () => {
-        try {
-            // === Web Audio API approach: capture ALL Agora audio directly ===
-            // This ensures Gladia gets every voice in the meeting.
+    const initAudioPipeline = () => {
+        if (audioContext.current) return { ctx: audioContext.current, destination: recDestination.current };
 
-            const ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
-            const destination = ctx.createMediaStreamDestination();
-            audioContext.current = ctx;
-            recDestination.current = destination;
-            connectedNodes.current = {};
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const destination = ctx.createMediaStreamDestination();
+        audioContext.current = ctx;
+        recDestination.current = destination;
+        connectedNodes.current = {};
 
-            // 1. Wire in LOCAL microphone track
-            const localAudioTrack = localTracks.current.audio;
-            if (localAudioTrack) {
+        // Wire in LOCAL microphone track
+        const localAudioTrack = localTracks.current.audio;
+        if (localAudioTrack) {
+            try {
+                const micMs = localAudioTrack.getMediaStreamTrack();
+                if (micMs) {
+                    const localSrc = ctx.createMediaStreamSource(new MediaStream([micMs]));
+                    localSrc.connect(destination);
+                    connectedNodes.current['__local'] = localSrc;
+                }
+            } catch (e) { }
+        }
+
+        // Wire in ALL current remote audio tracks
+        const currentRemotes = rtc.current?.remoteUsers || [];
+        for (const u of currentRemotes) {
+            if (u.audioTrack) {
                 try {
-                    const micMs = localAudioTrack.getMediaStreamTrack();
-                    if (micMs) {
-                        const localSrc = ctx.createMediaStreamSource(new MediaStream([micMs]));
-                        localSrc.connect(destination);
-                        connectedNodes.current['__local'] = localSrc;
+                    const ms = u.audioTrack.getMediaStreamTrack();
+                    if (ms) {
+                        const src = ctx.createMediaStreamSource(new MediaStream([ms]));
+                        src.connect(destination);
+                        connectedNodes.current[u.uid] = src;
                     }
                 } catch (e) { }
             }
+        }
 
-            // 2. Wire in ALL current remote audio tracks
-            const currentRemotes = rtc.current?.remoteUsers || [];
-            for (const u of currentRemotes) {
-                if (u.audioTrack) {
-                    try {
-                        const ms = u.audioTrack.getMediaStreamTrack();
-                        if (ms) {
-                            const src = ctx.createMediaStreamSource(new MediaStream([ms]));
-                            src.connect(destination);
-                            connectedNodes.current[u.uid] = src;
-                        }
-                    } catch (e) { }
-                }
-            }
+        return { ctx, destination };
+    };
 
-            // 3. The destination.stream only has audio — that's perfect for Gladia
+    const startRecording = async () => {
+        try {
+            const { destination } = initAudioPipeline();
             const audioOnlyStream = destination.stream;
-            console.log('[REC] Audio tracks in stream:', audioOnlyStream.getAudioTracks().length);
-
             recChunks.current = [];
 
-            // Pick best supported codec (prefer opus for audio quality)
-            const codecs = [
-                'audio/webm;codecs=opus',
-                'audio/webm',
-                'audio/ogg;codecs=opus',
-                'audio/mp4',
-                'video/webm;codecs=vp8,opus',
-                'video/webm',
-                ''
-            ];
+            const codecs = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/mp4', ''];
             const mimeType = codecs.find(c => c === '' || MediaRecorder.isTypeSupported(c)) || '';
             const options = mimeType ? { mimeType, audioBitsPerSecond: 128000 } : { audioBitsPerSecond: 128000 };
 
@@ -963,17 +960,12 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
                 if (e.data && e.data.size > 0) recChunks.current.push(e.data);
             };
 
-            mediaRecorder.current.onstop = () => {
-                // Handled in stopRecording wrapper now
-            };
-
             mediaRecorder.current.start(1000);
             setIsRecording(true);
             setRecSeconds(0);
             recTimer.current = setInterval(() => setRecSeconds(s => s + 1), 1000);
-
         } catch (err) {
-            console.error('[REC] startRecording error:', err.name, err.message);
+            console.error('[REC] startRecording error:', err.message);
         }
     };
 
@@ -1021,14 +1013,21 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             // Capture display (screen/window/tab)
             const displayStream = await navigator.mediaDevices.getDisplayMedia({
                 video: { frameRate: 30, width: { ideal: 1920 }, height: { ideal: 1080 } },
-                audio: true // capture system audio if browser supports
+                audio: true
             });
 
-            // Also mix in microphone
-            const micTrack = localTracks.current.audio?.getMediaStreamTrack?.();
+            // Ensure mixed audio pipeline is running (captures everyone's voices)
+            const { ctx, destination } = initAudioPipeline();
+
+            // Mix in any system audio from the browser share (if user opted in)
+            if (displayStream.getAudioTracks().length > 0) {
+                const sysAudio = ctx.createMediaStreamSource(displayStream);
+                sysAudio.connect(destination);
+            }
+
             const combinedStream = new MediaStream([
-                ...displayStream.getTracks(),
-                ...(micTrack ? [micTrack] : [])
+                displayStream.getVideoTracks()[0],
+                ...destination.stream.getAudioTracks()
             ]);
 
             screenRecChunks.current = [];
@@ -1206,7 +1205,9 @@ const MeetingRoom = ({ roomId, onLeave, initialConfig, isHost: initialIsHost = f
             <MeetingHeader
                 isRecording={isRecording}
                 recSeconds={recSeconds}
-                uploading={uploading}
+                isScreenRecording={isScreenRecording}
+                screenRecSeconds={screenRecSeconds}
+                uploading={uploading || screenUploading}
                 setShowInvite={setShowInvite}
                 participantCount={remoteUsers.length + 1}
                 setShowParticipants={setShowParticipants}
